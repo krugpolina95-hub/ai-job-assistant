@@ -17,7 +17,11 @@ class Environment(StrEnum):
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+    # env_ignore_empty: `VAR=` (as in .env.example and Compose's `${VAR:-}`) means "not set":
+    # optional settings become None, required ones still fail fast as missing.
+    model_config = SettingsConfigDict(
+        env_file=".env", env_file_encoding="utf-8", extra="ignore", env_ignore_empty=True
+    )
 
     app_env: Environment = Environment.LOCAL
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO"
@@ -43,6 +47,15 @@ class Settings(BaseSettings):
     password_hash_time_cost: int = Field(default=2, ge=1)
     password_hash_memory_kib: int = Field(default=19 * 1024, ge=8)
     password_hash_parallelism: int = Field(default=1, ge=1)
+
+    # Outbound calls to job sources (SOURCE-003: honest identity, bounded time).
+    # Contact shown in our User-Agent, e.g. an email or URL. Required before any real source runs.
+    sources_contact: str | None = Field(default=None, min_length=3, max_length=200)
+    source_http_timeout_seconds: float = Field(default=10.0, gt=0, le=60)
+    # Adzuna API credentials (source "adzuna", docs/source-compliance.md). Optional: without
+    # them the adapter refuses to run.
+    adzuna_app_id: str | None = Field(default=None, min_length=1, max_length=100)
+    adzuna_app_key: SecretStr | None = Field(default=None, min_length=1, max_length=200)
 
     # Versions of the legal documents a user accepts at registration (AUTH-002, GAP-05).
     legal_terms_version: str = Field(min_length=1, max_length=64)

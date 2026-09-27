@@ -79,3 +79,24 @@ def test_session_durations_accept_iso_8601(monkeypatch: pytest.MonkeyPatch) -> N
     monkeypatch.setenv("SESSION_IDLE_TIMEOUT", "P3D")
 
     assert Settings(_env_file=None).session_idle_timeout.days == 3
+
+
+def test_empty_optional_variables_count_as_unset(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Compose passes `${VAR:-}` and .env.example ships `VAR=`: both must mean "not set".
+    for name in ("SOURCES_CONTACT", "ADZUNA_APP_ID", "ADZUNA_APP_KEY"):
+        monkeypatch.setenv(name, "")
+
+    settings = Settings(_env_file=None)
+
+    assert (settings.sources_contact, settings.adzuna_app_id, settings.adzuna_app_key) == (
+        None,
+        None,
+        None,
+    )
+
+
+def test_empty_required_variable_still_fails_fast(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("LOG_HASH_SECRET", "")
+
+    with pytest.raises(ValidationError, match="log_hash_secret"):
+        Settings(_env_file=None)

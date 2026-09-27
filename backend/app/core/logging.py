@@ -8,7 +8,7 @@ lines in deployed environments, readable console output locally. Request-scoped 
 import logging
 import sys
 from collections.abc import MutableMapping
-from typing import Any, Literal
+from typing import Any, Literal, TextIO
 
 import structlog
 from structlog.typing import EventDict, Processor
@@ -46,7 +46,7 @@ def redact_sensitive(
     return dict(event_dict)
 
 
-def configure_logging(level: str, log_format: LogFormat) -> None:
+def configure_logging(level: str, log_format: LogFormat, stream: TextIO | None = None) -> None:
     shared_processors: list[Processor] = [
         structlog.contextvars.merge_contextvars,
         structlog.stdlib.add_log_level,
@@ -67,7 +67,7 @@ def configure_logging(level: str, log_format: LogFormat) -> None:
         cache_logger_on_first_use=False,
     )
 
-    handler = logging.StreamHandler(sys.stdout)
+    handler = logging.StreamHandler(stream or sys.stdout)
     handler.setFormatter(
         structlog.stdlib.ProcessorFormatter(
             foreign_pre_chain=shared_processors,
@@ -83,6 +83,10 @@ def configure_logging(level: str, log_format: LogFormat) -> None:
         uvicorn_logger = logging.getLogger(name)
         uvicorn_logger.handlers.clear()
         uvicorn_logger.propagate = True
+    # httpx logs every request URL at INFO. Some sources (Adzuna) take the API key as a query
+    # parameter, so those lines would leak secrets: keep only warnings and errors.
+    for name in ("httpx", "httpcore"):
+        logging.getLogger(name).setLevel(logging.WARNING)
     # Our request middleware writes the access log, with request_id and duration.
     access_logger = logging.getLogger("uvicorn.access")
     access_logger.handlers.clear()

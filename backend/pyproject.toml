@@ -8,6 +8,7 @@ dependencies = [
     "asyncpg>=0.31",
     "email-validator>=2.3",
     "fastapi>=0.141",
+    "httpx>=0.28",
     "pwdlib[argon2]>=0.3.1",
     "pydantic>=2.12",
     "pydantic-settings>=2.15",
@@ -20,10 +21,10 @@ dependencies = [
 
 [dependency-groups]
 dev = [
-    "httpx>=0.28",
     "mypy>=2.3",
     "pytest>=9.1",
     "pytest-asyncio>=1.4",
+    "respx>=0.23.1",
     "ruff>=0.16",
 ]
 

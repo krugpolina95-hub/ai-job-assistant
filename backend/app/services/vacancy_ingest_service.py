@@ -69,6 +69,9 @@ class VacancyIngestService:
             except (ValueError, KeyError, TypeError) as exc:
                 self._skip(result, position, f"normalize: {type(exc).__name__}")
                 continue
+            if not _clean(item.title):
+                self._skip(result, position, "normalize: empty title after cleanup")
+                continue
             problems = adapter.validate(item)
             if problems:
                 self._skip(result, position, "validate: " + "; ".join(problems))
@@ -174,10 +177,10 @@ def _column_values(source: Source, item: VacancyIn, now: datetime) -> dict[str, 
         "external_id": item.external_id,
         "url": item.url,
         "canonical_url": normalization.canonical_url(item.url),
-        "title": normalization.collapse_whitespace(item.title),
-        "normalized_title": normalization.normalize_title(item.title),
-        "company": normalization.collapse_whitespace(item.company) if item.company else None,
-        "company_normalized": normalization.normalize_company(item.company),
+        "title": _clean(item.title),
+        "normalized_title": normalization.normalize_title(_clean(item.title)),
+        "company": _clean(item.company) or None if item.company else None,
+        "company_normalized": normalization.normalize_company(_clean(item.company)),
         "description": description,
         "description_snippet": description_snippet,
         "requirements": list(item.requirements),
@@ -204,8 +207,8 @@ def _column_values(source: Source, item: VacancyIn, now: datetime) -> dict[str, 
         "experience_level": item.experience_level,
         "published_at": item.published_at,
         "content_hash": normalization.content_hash(
-            title=item.title,
-            company=item.company,
+            title=_clean(item.title),
+            company=_clean(item.company),
             country=item.country,
             city=item.city,
             remote_type=item.remote_type,
@@ -214,3 +217,8 @@ def _column_values(source: Source, item: VacancyIn, now: datetime) -> dict[str, 
         "is_active": not item.is_closed,
         "removed_at": now if item.is_closed else None,
     }
+
+
+def _clean(text: str | None) -> str:
+    """Plain text of a short field: sources may wrap titles in markup (e.g. <strong>)."""
+    return normalization.collapse_whitespace(normalization.html_to_text(text)) if text else ""

@@ -34,7 +34,7 @@ class MockSourceAdapter:
         return RateLimit(requests=60, per_seconds=60)
 
     async def search(self, params: Mapping[str, Any]) -> list[RawVacancy]:
-        roles = [role.casefold() for role in params.get("roles", [])]
+        roles = [word.casefold() for word in params.get("keywords") or params.get("roles") or []]
         return [
             copy.deepcopy(record)
             for record in self._records

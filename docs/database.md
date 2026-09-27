@@ -145,7 +145,7 @@ PK `(user_id, skill_id)`.
 | created_at, updated_at | timestamptz **NN** | |
 
 ### sources
-Job source registry (TD-08, TD-23). Sources are disabled, never deleted.
+Job source registry (TD-08, TD-23). Sources are disabled, never deleted. Rows are created and refreshed from the code registry (`app/integrations/sources/registry.py`) by `python -m app.cli sources sync`, which never changes `is_enabled` or `compliance_reviewed_at`.
 
 | Column | Type | Notes |
 |---|---|---|

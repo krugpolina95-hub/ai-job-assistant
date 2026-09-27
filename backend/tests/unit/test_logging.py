@@ -1,5 +1,6 @@
 import json
 import logging
+import sys
 
 import pytest
 import structlog
@@ -91,3 +92,13 @@ def test_resolve_request_id(incoming: str | None, reused: bool) -> None:
 
     assert (resolved == incoming) is reused
     assert resolved
+
+
+def test_logs_can_go_to_stderr(capsys: pytest.CaptureFixture[str]) -> None:
+    configure_logging("INFO", "json", stream=sys.stderr)
+
+    structlog.stdlib.get_logger("test").info("to_stderr")
+
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert json.loads(captured.err.strip().splitlines()[-1])["event"] == "to_stderr"

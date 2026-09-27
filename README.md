@@ -2,7 +2,7 @@
 
 Web app that turns a natural-language job request into structured search parameters, collects vacancies from reviewed sources, and explains how each one matches the user's profile.
 
-> **Status:** project foundation, database schema, backend foundation and backend authentication (register, login, logout, current user) and the vacancy module (source adapter port, mock source, ingestion with deduplication, list and details API). Search runs, real sources, AI, n8n workflows and the frontend pages are not implemented yet.
+> **Status:** project foundation, database schema, backend foundation and backend authentication (register, login, logout, current user) the vacancy module (source adapter port, mock source, ingestion with deduplication, list and details API) and the first real source adapter (Adzuna, disabled until its compliance review is complete). Search runs, AI, n8n workflows and the frontend pages are not implemented yet.
 
 ## Architecture
 
@@ -20,7 +20,7 @@ The browser talks only to the Next.js origin. FastAPI is not published (TD-05). 
 | `backend/` | FastAPI, Pydantic settings, async SQLAlchemy models + Alembic migrations (schema: `docs/database.md`), health/readiness endpoints |
 | `database/` | PostgreSQL init scripts (see `database/README.md`) |
 | `n8n/` | Exported workflows (none yet) and setup notes |
-| `docs/` | SRS, requirements analysis, architecture, technical decisions, roadmap, API reference (`api.md`), database schema (`database.md`), security controls (`security.md`) |
+| `docs/` | SRS, requirements analysis, architecture, technical decisions, roadmap, API reference (`api.md`), database schema (`database.md`), security controls (`security.md`), job source reviews (`source-compliance.md`) |
 | `docker-compose.yml`, `Caddyfile` | Local stack |
 
 ## Prerequisites
@@ -81,6 +81,20 @@ pnpm lint && pnpm typecheck && pnpm test && pnpm build   # build needs BACKEND_I
 # docker
 docker compose config --quiet
 ```
+
+## Job sources
+
+Sources are registered from code and stay disabled until a person completes their compliance review (`docs/source-compliance.md`). Until n8n orchestration exists, a source can be run by hand:
+
+```bash
+cd backend
+uv run python -m app.cli sources sync
+uv run python -m app.cli sources list
+uv run python -m app.cli sources enable mock --confirm-compliance-review   # offline fixtures, dev only
+uv run python -m app.cli sources run mock --country LT
+```
+
+Adzuna additionally needs `SOURCES_CONTACT`, `ADZUNA_APP_ID` and `ADZUNA_APP_KEY` (see `backend/.env.example`). The CLI prints JSON on stdout and logs on stderr.
 
 ## Configuration
 

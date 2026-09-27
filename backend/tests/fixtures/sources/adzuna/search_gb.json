@@ -1,0 +1,84 @@
+{
+  "__CLASS__": "Adzuna::API::Response::JobSearchResults",
+  "count": 6,
+  "mean": 51234.5,
+  "results": [
+    {
+      "__CLASS__": "Adzuna::API::Response::Job",
+      "id": "4001",
+      "adref": "eyJhbGciOiJIUzI1NiJ9",
+      "title": "<strong>Python</strong> Developer",
+      "company": {"__CLASS__": "Adzuna::API::Response::Company", "display_name": "Acme Ltd"},
+      "category": {"__CLASS__": "Adzuna::API::Response::Category", "label": "IT Jobs", "tag": "it-jobs"},
+      "location": {
+        "__CLASS__": "Adzuna::API::Response::Location",
+        "area": ["UK", "London", "Central London"],
+        "display_name": "Central London, London"
+      },
+      "latitude": 51.5072,
+      "longitude": -0.1276,
+      "salary_min": 55000,
+      "salary_max": 70000,
+      "salary_is_predicted": "0",
+      "contract_type": "permanent",
+      "contract_time": "full_time",
+      "created": "2026-09-20T10:15:00Z",
+      "redirect_url": "https://www.adzuna.co.uk/jobs/land/ad/4001?se=abc123&v=xyz",
+      "description": "We are hiring a <b>Python</b> developer to build APIs with FastAPI and PostgreSQL…"
+    },
+    {
+      "__CLASS__": "Adzuna::API::Response::Job",
+      "id": "4002",
+      "title": "Data Analyst",
+      "company": {"display_name": "Initech"},
+      "location": {"area": ["UK", "North West England", "Manchester"], "display_name": "Manchester"},
+      "salary_min": 42000.37,
+      "salary_max": 42000.37,
+      "salary_is_predicted": "1",
+      "contract_type": "contract",
+      "created": "2026-09-18T08:00:00Z",
+      "redirect_url": "https://www.adzuna.co.uk/jobs/land/ad/4002",
+      "description": "Dashboards and SQL for a 6 month contract."
+    },
+    {
+      "__CLASS__": "Adzuna::API::Response::Job",
+      "id": "4003",
+      "title": "Junior QA Tester",
+      "location": {"area": ["UK"], "display_name": "UK"},
+      "contract_time": "part_time",
+      "redirect_url": "https://www.adzuna.co.uk/jobs/land/ad/4003",
+      "description": "Manual testing. Company, salary and date not given."
+    },
+    {
+      "__CLASS__": "Adzuna::API::Response::Job",
+      "id": "4004",
+      "title": "Suspicious Listing",
+      "company": {"display_name": "Nobody"},
+      "location": {"area": ["UK", "London"], "display_name": "London"},
+      "created": "2026-09-19T12:00:00Z",
+      "redirect_url": "https://evil.example.com/phish?adzuna.co.uk",
+      "description": "Link does not go to Adzuna."
+    },
+    {
+      "__CLASS__": "Adzuna::API::Response::Job",
+      "id": "4005",
+      "title": "Listing Without Link",
+      "company": {"display_name": "Globex"},
+      "created": "2026-09-19T12:00:00Z",
+      "description": "No redirect_url field."
+    },
+    {
+      "__CLASS__": "Adzuna::API::Response::Job",
+      "id": "4006",
+      "title": "Support Engineer",
+      "company": {"display_name": "Hooli"},
+      "location": {"area": ["UK", "Scotland", "Edinburgh"], "display_name": "Edinburgh"},
+      "salary_min": 30500.555,
+      "salary_is_predicted": 0,
+      "contract_time": "full_time",
+      "created": "2026-09-21T09:30:00+00:00",
+      "redirect_url": "https://adzuna.co.uk/details/4006",
+      "description": "Customer support for a SaaS product."
+    }
+  ]
+}

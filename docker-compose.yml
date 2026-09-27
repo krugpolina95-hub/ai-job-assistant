@@ -58,6 +58,9 @@ services:
       LOG_HASH_SECRET: ${LOG_HASH_SECRET:?set LOG_HASH_SECRET in .env}
       LEGAL_TERMS_VERSION: ${LEGAL_TERMS_VERSION:?set LEGAL_TERMS_VERSION in .env}
       LEGAL_PRIVACY_VERSION: ${LEGAL_PRIVACY_VERSION:?set LEGAL_PRIVACY_VERSION in .env}
+      SOURCES_CONTACT: ${SOURCES_CONTACT:-}
+      ADZUNA_APP_ID: ${ADZUNA_APP_ID:-}
+      ADZUNA_APP_KEY: ${ADZUNA_APP_KEY:-}
     depends_on:
       postgres:
         condition: service_healthy

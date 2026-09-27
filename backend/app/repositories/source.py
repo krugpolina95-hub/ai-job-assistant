@@ -12,3 +12,7 @@ class SourceRepository(SharedRepository[Source]):
             select(Source).where(Source.adapter_key == adapter_key)
         )
         return source
+
+    async def list_all(self) -> list[Source]:
+        result = await self.session.scalars(select(Source).order_by(Source.adapter_key))
+        return list(result)

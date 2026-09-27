@@ -24,6 +24,17 @@ Protected routes use the `CurrentAuth` dependency; unsafe ones use `CsrfProtecte
 - Error responses never echo submitted values, and unexpected errors return a generic `500` (details are only in logs).
 - Security headers on every response: `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer`, `Cache-Control: no-store`.
 
+## Job sources (outbound calls)
+
+| Control | Implementation |
+|---|---|
+| Compliance gate | A source runs only when enabled, and enabling requires a recorded compliance review (DB CHECK + `sources enable --confirm-compliance-review`). The gate is checked before any outbound request. See `docs/source-compliance.md`. |
+| No scraping | Adapters use official APIs only. Honest `User-Agent` with a contact (`SOURCES_CONTACT`); no browser imitation. |
+| SSRF | Each adapter calls one fixed host (Adzuna: `api.adzuna.com` over HTTPS). Redirects are not followed. URLs from users or from source data are never fetched; source links are only stored and shown. Adzuna links must point to an Adzuna domain or the record is rejected. |
+| Credentials | From environment variables only (`ADZUNA_APP_ID`, `ADZUNA_APP_KEY`). Adzuna takes the key as a URL parameter, so: httpx request logging is limited to warnings (it logs full URLs at INFO), httpx exceptions are never chained into our errors (they contain the URL), and source error messages never include URLs. Tests verify the key appears in neither logs nor errors. |
+| Untrusted data | Source records are validated (`VacancyIn`), HTML is converted to plain text on ingest, and one bad record never fails a batch. |
+| Bounded cost | At most 100 results (2 requests) per source run; request timeout `SOURCE_HTTP_TIMEOUT_SECONDS`. Per-source rate limiting in Redis is still missing (M5.6). |
+
 ## Logging and secrets
 
 - Logs are JSON. User IDs are logged only as a keyed hash (`LOG_HASH_SECRET`, HMAC-SHA256). Emails, passwords, tokens and cookies are never logged, and keys like `password`, `token`, `email`, `cookie` are masked by a last-resort redaction processor.
