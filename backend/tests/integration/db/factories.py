@@ -14,6 +14,7 @@ from app.core.enums import (
     MatchLevel,
     SearchChannel,
     SourceType,
+    StoragePolicy,
 )
 from app.core.ids import uuid7
 from app.models import (
@@ -87,6 +88,34 @@ async def make_search_job(session: AsyncSession, search: Search, **overrides: An
         "deadline_at": datetime.now(UTC) + timedelta(seconds=120),
     }
     return await _persist(session, SearchJob(**(values | overrides)))
+
+
+async def make_enabled_source(
+    session: AsyncSession, adapter_key: str | None = None, **overrides: Any
+) -> Source:
+    """A source that passed its compliance review, so ingestion may run for it."""
+    values: dict[str, Any] = {
+        "adapter_key": adapter_key or f"mock-{uuid7().hex}",
+        "is_enabled": True,
+        "compliance_reviewed_at": datetime.now(UTC),
+        "storage_policy": StoragePolicy.FULL,
+    }
+    return await make_source(session, **(values | overrides))
+
+
+async def show_to_user(session: AsyncSession, user_id: Any, vacancies: list[Vacancy]) -> SearchJob:
+    """Make vacancies visible to a user the way search runs will: as results of their job."""
+    search = await _persist(
+        session,
+        Search(user_id=user_id, normalized_params={"roles": ["any"]}, channel=SearchChannel.FORM),
+    )
+    job = await make_search_job(session, search)
+    session.add_all(
+        SearchJobResult(search_job_id=job.id, vacancy_id=vacancy.id, rank=rank)
+        for rank, vacancy in enumerate(vacancies, start=1)
+    )
+    await session.flush()
+    return job
 
 
 async def make_user_graph(session: AsyncSession) -> dict[str, Any]:

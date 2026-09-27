@@ -171,10 +171,10 @@ The AI response wraps it: `{params: SearchParamsV1 (partial), missing_informatio
 ## TD-16 — Deduplication
 **Decision.** On ingest, check in order:
 1. `(source_id, external_id)` → same record (update, refresh `last_verified_at`).
-2. `canonical_url` (lowercased host, tracking params stripped, trailing slash normalized) → same record.
+2. `canonical_url` (lowercased host, tracking params stripped, trailing slash normalized) → same record within a source; across sources → same `duplicate_group_id`. Records are never merged across sources, because each keeps its own source's storage policy and attribution (AMB-10).
 3. `content_hash` (fields per AMB-24) → same record within a source; across sources → same `duplicate_group_id`.
 4. Fuzzy: `normalized_title` trigram similarity ≥ 0.85 **and** same normalized company **and** same city/remote type, within 30 days → same `duplicate_group_id` (grouping only, never merging).
-Results are shown one card per group, with the most complete record as primary and "Also on: …".
+Results are shown one card per group, with the most complete record as primary and "Also on: …". The primary is chosen among the records the user can see.
 **Consequences.** Satisfies VACANCY-001 without destroying data. False positives only affect grouping.
 
 ## TD-17 — Deployment and CI

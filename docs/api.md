@@ -63,6 +63,7 @@ Defined in `backend/app/core/errors.py`. New codes are added with the feature th
 | `METHOD_NOT_ALLOWED` | 405 | The route exists but not for this method. The `Allow` header lists valid methods. |
 | `CONFLICT` | 409 | The request conflicts with the current state (`ConflictError`). |
 | `EMAIL_ALREADY_REGISTERED` | 409 | Registration with an email that already has an account (case-insensitive). |
+| `SOURCE_NOT_ENABLED` | 409 | Ingestion for a source that is unknown, disabled or not compliance-reviewed. Internal ingestion only; not returned by public endpoints. |
 | `PAYLOAD_TOO_LARGE` | 413 | The body exceeds 64 KB (declared `Content-Length` or streamed). |
 | `INTERNAL_ERROR` | 500 | Any unexpected exception. The message is always generic, and details are only in the logs under the same `request_id`. |
 
@@ -91,3 +92,36 @@ Defined in `backend/app/core/errors.py`. New codes are added with the feature th
 Validation (`422 VALIDATION_ERROR`): email must be valid and ≤ 254 characters; password 10–128 characters (used exactly as typed, including spaces) and not equal to the email; `accept_terms` must be `true`, and the accepted terms/privacy versions are stored with the account; unknown fields are rejected.
 
 Errors: register → `409 EMAIL_ALREADY_REGISTERED`; login → `401 INVALID_CREDENTIALS`; protected routes → `401 UNAUTHENTICATED`, and unsafe ones also `403 CSRF_FAILED`.
+
+### Vacancies
+
+A user sees only vacancies **visible to them**: those in results of their own search jobs, or in their saved list (architecture §8.2). There is no public catalog. Anything else, including another user's results, is `404 NOT_FOUND`.
+
+| Method | Path | Auth | Success |
+|---|---|---|---|
+| GET | `/api/v1/vacancies` | session | `200 {items: VacancySummaryOut[], next_cursor: string \| null}` |
+| GET | `/api/v1/vacancies/{vacancy_id}` | session | `200 VacancyDetailOut`, or `404` if unknown or not visible |
+
+**Query parameters** (all optional; unknown parameters are rejected with `422`):
+
+| Parameter | Meaning |
+|---|---|
+| `q` | Text in title or company, 2–100 characters, case-insensitive. |
+| `source` | Source key; repeat for several (`?source=a&source=b`). |
+| `remote_type`, `employment_type`, `experience_level` | Enum values; repeat for several. |
+| `country` | ISO 3166-1 alpha-2 (case-insensitive). |
+| `city` | Exact city name, case-insensitive. |
+| `salary_min_eur` | Monthly EUR the posting's range must reach. Only postings with a comparable salary match: EUR amounts with a known period until FX rates land (TD-14, M5.11). Other currencies are excluded while this filter is set, not converted by guesswork. |
+| `published_within_days` | 1–365. Postings without a publication date are excluded while set. |
+| `include_inactive` | `true` includes postings the source reports closed (default `false`). |
+| `sort` | `date` (default): newest publication first. `salary`: highest comparable monthly EUR first. Unknown values always sort last. |
+| `limit`, `cursor` | Page size 1–100 (default 25), and the `next_cursor` of the previous page. A cursor only continues the sort it came from; a malformed or mismatched cursor is `422` with `details: {"field": "cursor"}`. |
+
+**Duplicates:** the same posting on several sources is one item. The most complete visible record represents the group, and `also_on` lists the other sources with their original URLs (TD-16).
+
+**`VacancySummaryOut`:** `id, title, company, location {country, region, city}, remote_type, employment_type, experience_level, salary, description_snippet, url, source {key, name, attribution_text}, published_at, collected_at, last_verified_at, freshness, also_on[]`.
+- `url` is the original posting URL, never rewritten (VACANCY-002).
+- `salary` is `{min, max, currency, period}` as published, or `null` when the source gave none: show "Not specified", never an estimate (VACANCY-003).
+- `freshness` is `fresh`, `stale` (published over 30 days ago or not re-verified for 7 days, AMB-11) or `removed` (closed at the source). Show a warning for anything but `fresh` (SOURCE-004, VACANCY-004).
+
+**`VacancyDetailOut`** adds `description` (only when the source's storage policy allows full text, TD-23), `requirements`, `responsibilities`, `skills`, `language`, `salary_raw`, `location_raw`, `removed_at`.

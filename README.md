@@ -2,7 +2,7 @@
 
 Web app that turns a natural-language job request into structured search parameters, collects vacancies from reviewed sources, and explains how each one matches the user's profile.
 
-> **Status:** project foundation, database schema, backend foundation and backend authentication (register, login, logout, current user). Search, jobs, AI, n8n workflows and the frontend auth pages are not implemented yet.
+> **Status:** project foundation, database schema, backend foundation and backend authentication (register, login, logout, current user) and the vacancy module (source adapter port, mock source, ingestion with deduplication, list and details API). Search runs, real sources, AI, n8n workflows and the frontend pages are not implemented yet.
 
 ## Architecture
 

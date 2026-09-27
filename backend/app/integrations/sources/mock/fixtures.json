@@ -1,0 +1,88 @@
+[
+  {
+    "id": "m-1",
+    "link": "https://jobs.mock.test/postings/m-1?utm_source=feed",
+    "position": "Python Developer",
+    "employer": "Acme Ltd",
+    "html_body": "<h2>About the role</h2><p>Build APIs with <b>FastAPI</b> &amp; PostgreSQL.</p><script>alert('x')</script>",
+    "must_have": ["3+ years of Python", "SQL"],
+    "tags": ["Python", "FastAPI", "PostgreSQL"],
+    "lang": "en",
+    "pay": {"from": 3000, "to": 4500, "cur": "eur", "per": "month", "text": "3000-4500 EUR/month"},
+    "place": {"country": "lt", "city": "Vilnius", "text": "Vilnius, Lithuania"},
+    "mode": "hybrid",
+    "contract": "full_time",
+    "level": "middle",
+    "posted": 1790000000
+  },
+  {
+    "id": "m-2",
+    "link": "https://jobs.mock.test/postings/m-2",
+    "position": "Junior QA Engineer",
+    "employer": "Globex",
+    "html_body": "Manual and automated testing. No salary or publication date given.",
+    "tags": ["Selenium"],
+    "mode": "remote",
+    "level": "junior"
+  },
+  {
+    "id": "m-3",
+    "link": "https://jobs.mock.test/postings/m-3",
+    "position": "Data Analyst",
+    "employer": "Initech Inc.",
+    "html_body": "<p>Dashboards and SQL.</p>",
+    "pay": {"from": 60000, "to": 80000, "cur": "USD", "per": "year"},
+    "place": {"country": "US", "city": "New York"},
+    "mode": "onsite",
+    "contract": "full_time",
+    "posted": 1789500000
+  },
+  {
+    "id": "m-1-repost",
+    "link": "https://JOBS.mock.test/postings/m-1/?gclid=abc",
+    "position": "Python Developer",
+    "employer": "Acme Ltd",
+    "html_body": "<h2>About the role</h2><p>Build APIs with <b>FastAPI</b> &amp; PostgreSQL.</p>",
+    "pay": {"from": 3000, "to": 4500, "cur": "EUR", "per": "month"},
+    "place": {"country": "LT", "city": "Vilnius"},
+    "mode": "hybrid",
+    "posted": 1790000000
+  },
+  {
+    "id": "m-5",
+    "link": "https://jobs.mock.test/postings/m-5",
+    "position": "Frontend Developer",
+    "employer": "Hooli",
+    "html_body": "This posting has been filled.",
+    "mode": "remote",
+    "closed": true
+  },
+  {
+    "id": "m-6",
+    "link": "https://jobs.mock.test/postings/m-6",
+    "position": "",
+    "employer": "Nameless Corp",
+    "html_body": "Invalid: no title."
+  },
+  {
+    "id": "m-7",
+    "link": "https://jobs.mock.test/postings/m-7",
+    "position": "Backend Engineer",
+    "employer": "Umbrella",
+    "pay": {"from": 5000, "to": 3000, "cur": "EUR", "per": "month"},
+    "html_body": "Invalid: salary range reversed."
+  },
+  {
+    "id": "m-8",
+    "link": "https://jobs.mock.test/postings/m-8",
+    "position": "DevOps Contractor",
+    "employer": "Stark Industries",
+    "html_body": "Short-term infrastructure contract.",
+    "pay": {"from": 50, "to": 70, "cur": "EUR", "per": "hour"},
+    "place": {"country": "DE", "city": "Berlin"},
+    "mode": "remote",
+    "contract": "contract",
+    "level": "senior",
+    "posted": 1789800000
+  }
+]

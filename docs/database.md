@@ -164,7 +164,7 @@ Job source registry (TD-08, TD-23). Sources are disabled, never deleted.
 | created_at, updated_at | timestamptz **NN** | |
 
 ### vacancies
-One job posting from one source. Cross-source duplicates are grouped, never merged (TD-16).
+One job posting from one source. Written only by ingestion (`VacancyIngestService`), from records a source adapter has normalized, so the table never depends on a source's format. Cross-source duplicates are grouped, never merged (TD-16). Users read only the vacancies in their own search results or saved list.
 
 | Column | Type | Notes |
 |---|---|---|

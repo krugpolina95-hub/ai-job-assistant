@@ -23,6 +23,7 @@ class ErrorCode(StrEnum):
     METHOD_NOT_ALLOWED = "METHOD_NOT_ALLOWED"
     CONFLICT = "CONFLICT"
     EMAIL_ALREADY_REGISTERED = "EMAIL_ALREADY_REGISTERED"
+    SOURCE_NOT_ENABLED = "SOURCE_NOT_ENABLED"
     PAYLOAD_TOO_LARGE = "PAYLOAD_TOO_LARGE"
     INTERNAL_ERROR = "INTERNAL_ERROR"
 
@@ -94,3 +95,12 @@ class EmailAlreadyRegisteredError(AppError):
     code = ErrorCode.EMAIL_ALREADY_REGISTERED
     status_code = HTTPStatus.CONFLICT
     default_message = "An account with this email already exists"
+
+
+class SourceNotEnabledError(AppError):
+    """Ingestion for a source that is unknown or disabled. Sources run only after their
+    compliance review (TD-08, CLAUDE.md §7)."""
+
+    code = ErrorCode.SOURCE_NOT_ENABLED
+    status_code = HTTPStatus.CONFLICT
+    default_message = "Source is not registered or not enabled"
