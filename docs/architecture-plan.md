@@ -109,7 +109,7 @@ backend/
 ```
 
 ### 4.3 Cross-cutting middleware (in order)
-Security headers → request ID + structured access log (+ last-resort 500 envelope) → body size limit (64 KB) → session loader → rate limiter (Redis, per route group) → CSRF check (unsafe methods, public API only) → router → exception handlers (map to the error envelope). Security headers are outermost so every response gets them, including 413 and 500. All are pure ASGI middlewares in `app/api/middleware.py`.
+Security headers → request ID + structured access log (+ last-resort 500 envelope) → body size limit (64 KB) → rate limiter (Redis, per route group) → router → exception handlers (map to the error envelope). Security headers are outermost so every response gets them, including 413 and 500. These are pure ASGI middlewares in `app/api/middleware.py`. Session loading and the CSRF check are FastAPI dependencies (`CurrentAuth`, `CsrfProtectedAuth` in `app/api/deps.py`) rather than middleware: routes declare what they need, and `tests/authz/` fails if a non-public route lacks authentication or an unsafe one lacks the CSRF check.
 
 ### 4.4 Rate limit groups (initial)
 | Group | Limit |

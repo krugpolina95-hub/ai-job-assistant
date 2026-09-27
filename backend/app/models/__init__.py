@@ -7,6 +7,7 @@ from app.models.match import VacancyMatch
 from app.models.profile import UserProfile
 from app.models.saved import SavedVacancy
 from app.models.search import Search
+from app.models.session import UserSession
 from app.models.skill import Skill, SkillAlias, UserSkill
 from app.models.source import Source
 from app.models.user import User
@@ -25,6 +26,7 @@ __all__ = [
     "Source",
     "User",
     "UserProfile",
+    "UserSession",
     "UserSkill",
     "Vacancy",
     "VacancyMatch",

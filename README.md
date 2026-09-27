@@ -2,7 +2,7 @@
 
 Web app that turns a natural-language job request into structured search parameters, collects vacancies from reviewed sources, and explains how each one matches the user's profile.
 
-> **Status:** project foundation (roadmap M0–M2 scaffolding) and the database schema. Authentication, search, jobs, AI and n8n workflows are not implemented yet.
+> **Status:** project foundation, database schema, backend foundation and backend authentication (register, login, logout, current user). Search, jobs, AI, n8n workflows and the frontend auth pages are not implemented yet.
 
 ## Architecture
 
@@ -20,7 +20,7 @@ The browser talks only to the Next.js origin. FastAPI is not published (TD-05). 
 | `backend/` | FastAPI, Pydantic settings, async SQLAlchemy models + Alembic migrations (schema: `docs/database.md`), health/readiness endpoints |
 | `database/` | PostgreSQL init scripts (see `database/README.md`) |
 | `n8n/` | Exported workflows (none yet) and setup notes |
-| `docs/` | SRS, requirements analysis, architecture, technical decisions, roadmap, API conventions (`api.md`), database schema (`database.md`) |
+| `docs/` | SRS, requirements analysis, architecture, technical decisions, roadmap, API reference (`api.md`), database schema (`database.md`), security controls (`security.md`) |
 | `docker-compose.yml`, `Caddyfile` | Local stack |
 
 ## Prerequisites

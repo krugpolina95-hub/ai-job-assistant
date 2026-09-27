@@ -14,6 +14,7 @@ from app.api.router import API_V1_PREFIX, api_v1_router
 from app.core.config import Settings, get_settings
 from app.core.logging import configure_logging
 from app.core.redis import create_redis
+from app.core.security import PasswordHasher
 from app.db.session import create_db_engine, create_session_factory
 
 logger = structlog.stdlib.get_logger(__name__)
@@ -47,6 +48,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         redoc_url=None,
     )
     app.state.settings = settings
+    app.state.password_hasher = PasswordHasher(
+        time_cost=settings.password_hash_time_cost,
+        memory_kib=settings.password_hash_memory_kib,
+        parallelism=settings.password_hash_parallelism,
+    )
 
     register_error_handlers(app)
     # add_middleware prepends: the last one added is the outermost.

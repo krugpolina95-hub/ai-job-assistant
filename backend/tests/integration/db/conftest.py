@@ -6,10 +6,20 @@ import pytest
 import pytest_asyncio
 from alembic import command
 from alembic.config import Config
+from fastapi import FastAPI
+from httpx import ASGITransport, AsyncClient
 from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, create_async_engine
+from sqlalchemy.ext.asyncio import (
+    AsyncConnection,
+    AsyncEngine,
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+)
 from sqlalchemy.pool import NullPool
 
+from app.core.config import Settings
+from app.main import create_app
 from tests.settings import DatabaseTestSettings
 
 BACKEND_DIR = Path(__file__).resolve().parents[3]
@@ -57,18 +67,45 @@ async def db_engine(migrated_database: str) -> AsyncIterator[AsyncEngine]:
 
 
 @pytest_asyncio.fixture(loop_scope="session")
-async def db_session(db_engine: AsyncEngine) -> AsyncIterator[AsyncSession]:
-    """A session inside a transaction that is always rolled back, so tests never leak data.
-
-    Use `async with db_session.begin_nested():` around statements that are expected to fail.
-    """
+async def db_connection(db_engine: AsyncEngine) -> AsyncIterator[AsyncConnection]:
+    """One connection per test inside a transaction that is always rolled back, so tests
+    never leak data, even through code that commits (commits become savepoint releases)."""
     async with db_engine.connect() as connection:
         transaction = await connection.begin()
-        session = AsyncSession(
-            bind=connection, join_transaction_mode="create_savepoint", expire_on_commit=False
-        )
         try:
-            yield session
+            yield connection
         finally:
-            await session.close()
             await transaction.rollback()
+
+
+@pytest_asyncio.fixture(loop_scope="session")
+async def db_session(db_connection: AsyncConnection) -> AsyncIterator[AsyncSession]:
+    """Use `async with db_session.begin_nested():` around statements expected to fail."""
+    session = AsyncSession(
+        bind=db_connection, join_transaction_mode="create_savepoint", expire_on_commit=False
+    )
+    try:
+        yield session
+    finally:
+        await session.close()
+
+
+@pytest.fixture
+def api_app(settings: Settings, db_connection: AsyncConnection) -> FastAPI:
+    """The real app, with request sessions bound to the test transaction."""
+    app = create_app(settings)
+    app.state.db_session_factory = async_sessionmaker(
+        bind=db_connection,
+        join_transaction_mode="create_savepoint",
+        expire_on_commit=False,
+        autoflush=False,
+    )
+    return app
+
+
+@pytest_asyncio.fixture(loop_scope="session")
+async def api_client(api_app: FastAPI) -> AsyncIterator[AsyncClient]:
+    # https: session cookies are Secure, and the client only sends them over https.
+    transport = ASGITransport(app=api_app)
+    async with AsyncClient(transport=transport, base_url="https://testserver") as client:
+        yield client

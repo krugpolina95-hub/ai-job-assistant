@@ -23,6 +23,7 @@ def test_expected_tables_exist() -> None:
     assert {table.name for table in TABLES} == {
         "users",
         "user_profiles",
+        "user_sessions",
         "skills",
         "skill_aliases",
         "user_skills",

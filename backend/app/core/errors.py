@@ -16,9 +16,13 @@ from typing import Any, ClassVar
 class ErrorCode(StrEnum):
     BAD_REQUEST = "BAD_REQUEST"
     VALIDATION_ERROR = "VALIDATION_ERROR"
+    UNAUTHENTICATED = "UNAUTHENTICATED"
+    INVALID_CREDENTIALS = "INVALID_CREDENTIALS"
+    CSRF_FAILED = "CSRF_FAILED"
     NOT_FOUND = "NOT_FOUND"
     METHOD_NOT_ALLOWED = "METHOD_NOT_ALLOWED"
     CONFLICT = "CONFLICT"
+    EMAIL_ALREADY_REGISTERED = "EMAIL_ALREADY_REGISTERED"
     PAYLOAD_TOO_LARGE = "PAYLOAD_TOO_LARGE"
     INTERNAL_ERROR = "INTERNAL_ERROR"
 
@@ -59,3 +63,34 @@ class ValidationFailedError(AppError):
     code = ErrorCode.VALIDATION_ERROR
     status_code = HTTPStatus.UNPROCESSABLE_ENTITY
     default_message = "Validation failed"
+
+
+class UnauthenticatedError(AppError):
+    """No valid session. Deliberately says nothing about why (missing, expired, revoked)."""
+
+    code = ErrorCode.UNAUTHENTICATED
+    status_code = HTTPStatus.UNAUTHORIZED
+    default_message = "Authentication required"
+
+
+class InvalidCredentialsError(AppError):
+    """Same response for an unknown email and a wrong password (AUTH acceptance criteria)."""
+
+    code = ErrorCode.INVALID_CREDENTIALS
+    status_code = HTTPStatus.UNAUTHORIZED
+    default_message = "Invalid email or password"
+
+
+class CsrfFailedError(AppError):
+    code = ErrorCode.CSRF_FAILED
+    status_code = HTTPStatus.FORBIDDEN
+    default_message = "CSRF token missing or invalid"
+
+
+class EmailAlreadyRegisteredError(AppError):
+    """Registration rejects duplicates explicitly (requirements-analysis F1). This reveals
+    that an email is registered; registration rate limits (M3.5) bound that enumeration."""
+
+    code = ErrorCode.EMAIL_ALREADY_REGISTERED
+    status_code = HTTPStatus.CONFLICT
+    default_message = "An account with this email already exists"

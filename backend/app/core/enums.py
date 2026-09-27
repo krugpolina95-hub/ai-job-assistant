@@ -6,6 +6,13 @@ Each enum is stored as Postgres `text` guarded by a CHECK constraint (see app/db
 from enum import StrEnum
 
 
+class SupportedLocale(StrEnum):
+    """UI languages (TD-20). Adding one also needs a frontend catalog and email templates."""
+
+    EN = "en"
+    RU = "ru"
+
+
 class WorkFormat(StrEnum):
     REMOTE = "remote"
     HYBRID = "hybrid"

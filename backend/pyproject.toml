@@ -6,12 +6,15 @@ requires-python = ">=3.12,<3.13"
 dependencies = [
     "alembic>=1.20",
     "asyncpg>=0.31",
+    "email-validator>=2.3",
     "fastapi>=0.141",
+    "pwdlib[argon2]>=0.3.1",
     "pydantic>=2.12",
     "pydantic-settings>=2.15",
     "redis>=8.1",
     "sqlalchemy[asyncio]>=2.1",
     "structlog>=26.1",
+    "tzdata>=2026.4",
     "uvicorn[standard]>=0.54",
 ]
 

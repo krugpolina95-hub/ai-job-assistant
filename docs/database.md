@@ -1,6 +1,6 @@
 # Database Schema
 
-PostgreSQL 16. The schema is owned by Alembic migrations in `backend/alembic/versions/`. ORM models live in `backend/app/models/`. This document describes the schema at revision **`ff0fd9cabbe9` (initial MVP schema)**.
+PostgreSQL 16. The schema is owned by Alembic migrations in `backend/alembic/versions/`. ORM models live in `backend/app/models/`. This document describes the schema at revision **`af0f71f9d25c`** (`ff0fd9cabbe9` initial MVP schema + `af0f71f9d25c` user sessions).
 
 Related: `architecture-plan.md` §7 (data architecture), TD-12 (idempotency), TD-13 (results), TD-14 (salary), TD-16 (dedup), TD-23 (storage policy), TD-24 (deletion), TD-26 (IDs).
 
@@ -56,7 +56,7 @@ Shared data (not owned by any user): `skills`, `skill_aliases`, `sources`, `vaca
 Columns marked **NN** are `NOT NULL`. Every table with `updated_at` also has `created_at`.
 
 ### users
-Account identity. Auth mechanics (sessions, tokens, auth events) come with M3.
+Account identity. Login sessions live in `user_sessions`.
 
 | Column | Type | Notes |
 |---|---|---|
@@ -66,11 +66,27 @@ Account identity. Auth mechanics (sessions, tokens, auth events) come with M3.
 | is_verified, is_admin | boolean **NN** | Default `false`. |
 | preferred_locale | text **NN** | Default `en`. Not CHECKed, so adding a locale needs no migration (TD-20). |
 | timezone | text **NN** | IANA name, default `UTC`. |
-| terms_version, privacy_version | text | Accepted legal document versions. |
+| terms_version, privacy_version | text | Versions of the terms/privacy policy accepted at registration (`LEGAL_*_VERSION`, AUTH-002). |
 | terms_accepted_at | timestamptz | |
-| failed_login_count | integer **NN** | Default 0, ≥ 0. |
-| locked_until, last_login_at | timestamptz | |
+| failed_login_count | integer **NN** | Default 0, ≥ 0. Reserved for the login lockout (M3.5), not written yet. |
+| locked_until | timestamptz | Reserved for the login lockout (M3.5). |
+| last_login_at | timestamptz | Set on registration and every successful login. |
 | created_at, updated_at | timestamptz **NN** | |
+
+### user_sessions
+Server-side login sessions (TD-03). The cookie holds a random 256-bit token; only its SHA-256 is stored, so a database leak exposes no usable session.
+
+| Column | Type | Notes |
+|---|---|---|
+| id | uuid PK | |
+| user_id | uuid **NN** | FK `users` CASCADE. Indexed. |
+| token_hash | text **NN** | UNIQUE. SHA-256 hex of the cookie token (64 chars). |
+| last_seen_at | timestamptz **NN** | Last activity. The session ends after `SESSION_IDLE_TIMEOUT` (7 days) without activity. Written at most every `SESSION_TOUCH_INTERVAL` (5 min). |
+| expires_at | timestamptz **NN** | Absolute end: login + 30 days with "remember me", 12 hours without. |
+| user_agent | text | ≤ 512 chars. No IP address is stored. |
+| created_at | timestamptz **NN** | |
+
+A session is deleted on logout, on a login that replaces it (token rotation), and when it is found expired. A user's expired sessions are also removed at each login.
 
 ### user_profiles
 One per user (`UNIQUE(user_id)`). Professional data only. Sensitive attributes (age, gender, nationality, religion, health, marital status, photo) are deliberately absent (MATCH-004).
@@ -304,7 +320,7 @@ Metadata of AI calls for cost, quota and quality tracking. **Prompt and response
 
 | Action | Effect |
 |---|---|
-| Delete a user (AMB-14) | `DELETE FROM users` cascades to every user-owned table: profile, skills, searches, jobs, job sources, results, matches, saved vacancies, history events and AI interactions. Shared `vacancies`, `sources` and `skills` stay. |
+| Delete a user (AMB-14) | `DELETE FROM users` cascades to every user-owned table: sessions, profile, skills, searches, jobs, job sources, results, matches, saved vacancies, history events and AI interactions. Shared `vacancies`, `sources` and `skills` stay. |
 | Delete one search | Cascades to its jobs → job sources, results, matches. Its history events are deleted. AI interactions keep their metrics with `search_id = NULL`. |
 | Delete history (AMB-13) | The service deletes the user's searches (cascades as above), remaining history events and AI interactions. Saved vacancies are kept. |
 | Vacancy retention (TD-24) | Deleting a vacancy cascades to job results and matches. It is **blocked** while any user has it saved. |
@@ -335,7 +351,9 @@ Tables from `architecture-plan.md` §7.2 that are **deferred** to the milestone 
 
 | Table | Milestone |
 |---|---|
-| `user_sessions`, `password_reset_tokens`, `email_verification_tokens`, `auth_events` | M3 Authentication |
+| `auth_events` | M3.5 rate limiting and lockout |
+| `password_reset_tokens` | M3.6 password reset |
+| `email_verification_tokens` | M3.7 email verification |
 | `fx_rates` | M5 salary normalization (TD-14) |
 | `audit_log` | M11 account deletion |
 

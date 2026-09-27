@@ -69,6 +69,8 @@ class RequestContextMiddleware:
                 MutableHeaders(scope=message)[REQUEST_ID_HEADER] = request_id
             await send(message)
 
+        # Values bound by an earlier request in this context (e.g. `user`) must not leak.
+        structlog.contextvars.clear_contextvars()
         with structlog.contextvars.bound_contextvars(request_id=request_id):
             try:
                 await self.app(scope, receive, send_with_request_id)

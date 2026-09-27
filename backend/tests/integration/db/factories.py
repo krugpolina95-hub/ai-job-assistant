@@ -28,6 +28,7 @@ from app.models import (
     Source,
     User,
     UserProfile,
+    UserSession,
     UserSkill,
     Vacancy,
     VacancyMatch,
@@ -100,6 +101,11 @@ async def make_user_graph(session: AsyncSession) -> dict[str, Any]:
     session.add_all(
         [
             UserProfile(user_id=user.id, city="Vilnius"),
+            UserSession(
+                user_id=user.id,
+                token_hash=hashlib.sha256(uuid7().bytes).hexdigest(),
+                expires_at=datetime.now(UTC) + timedelta(days=1),
+            ),
             UserSkill(user_id=user.id, skill_id=skill.id),
             SearchJobSource(search_job_id=job.id, source_id=source.id),
             SearchJobResult(search_job_id=job.id, vacancy_id=vacancy.id, rank=1),

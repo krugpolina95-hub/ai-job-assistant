@@ -17,6 +17,7 @@ from app.models import (
     Source,
     User,
     UserProfile,
+    UserSession,
     UserSkill,
     Vacancy,
     VacancyMatch,
@@ -32,6 +33,7 @@ pytestmark = pytest.mark.asyncio(loop_scope="session")
 
 USER_OWNED = (
     UserProfile,
+    UserSession,
     UserSkill,
     Search,
     SearchJob,
