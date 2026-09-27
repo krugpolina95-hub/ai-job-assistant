@@ -1,0 +1,21 @@
+/*
+ * Design tokens (SRS §9.5). The single source of colors, radii and typography.
+ * Components use the Tailwind utilities mapped in globals.css, never raw values.
+ */
+:root {
+  --token-color-background: #ffffff;
+  --token-color-surface: #f6f7f9;
+  --token-color-foreground: #111827;
+  --token-color-muted-foreground: #4b5563;
+  --token-color-border: #d1d5db;
+  --token-color-primary: #1d4ed8;
+  --token-color-primary-foreground: #ffffff;
+  --token-color-focus-ring: #2563eb;
+
+  --token-radius-sm: 0.25rem;
+  --token-radius-md: 0.5rem;
+  --token-radius-lg: 0.75rem;
+
+  --token-font-sans:
+    system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}

@@ -1,0 +1,29 @@
+@import "tailwindcss";
+@import "./tokens.css";
+
+@theme inline {
+  --color-background: var(--token-color-background);
+  --color-surface: var(--token-color-surface);
+  --color-foreground: var(--token-color-foreground);
+  --color-muted-foreground: var(--token-color-muted-foreground);
+  --color-border: var(--token-color-border);
+  --color-primary: var(--token-color-primary);
+  --color-primary-foreground: var(--token-color-primary-foreground);
+  --color-focus-ring: var(--token-color-focus-ring);
+
+  --radius-sm: var(--token-radius-sm);
+  --radius-md: var(--token-radius-md);
+  --radius-lg: var(--token-radius-lg);
+
+  --font-sans: var(--token-font-sans);
+}
+
+@layer base {
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+  }
+
+  :focus-visible {
+    @apply outline-focus-ring outline-2 outline-offset-2;
+  }
+}

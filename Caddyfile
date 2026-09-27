@@ -1,0 +1,14 @@
+# Public entry point (TD-05, TD-17). Every request goes to Next.js; FastAPI is reached only
+# through the Next.js /api/v1 rewrite. Set SITE_ADDRESS to a domain to get automatic HTTPS.
+{$SITE_ADDRESS} {
+	encode zstd gzip
+
+	header {
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		X-Frame-Options "DENY"
+		-Server
+	}
+
+	reverse_proxy frontend:3000
+}

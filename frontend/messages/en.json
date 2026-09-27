@@ -1,0 +1,11 @@
+{
+  "Metadata": {
+    "title": "AI Job Assistant",
+    "description": "Find relevant vacancies from a natural-language request."
+  },
+  "HomePage": {
+    "title": "AI Job Assistant",
+    "tagline": "Describe the job you want, and we'll find matching vacancies.",
+    "status": "The project foundation is running."
+  }
+}

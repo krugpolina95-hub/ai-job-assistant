@@ -69,6 +69,8 @@ Don't add a dependency without a reason in the PR description. New infrastructur
 frontend/   app/[locale]/…  features/<feature>/  components/(ui/)  lib/  types/api.d.ts (generated)  messages/{en,ru}.json  styles/tokens.css  tests/
 backend/    app/{api/v1, api/internal/v1, core, db, models, schemas, repositories, services, integrations/{ai,sources,geoip,email,n8n}, cli.py, main.py}  alembic/  tests/{unit,integration,authz,fixtures}
 n8n/        workflows/*.json (no credentials)  README.md
+database/   init/ (Postgres first-boot scripts; schema lives in backend/alembic)  README.md
+docker-compose.yml  Caddyfile  .env.example
 docs/       SRS, analysis, architecture, decisions, roadmap, api.md, database.md, security.md, privacy.md, source-compliance.md
 ```
 
@@ -78,13 +80,15 @@ docs/       SRS, analysis, architecture, decisions, roadmap, api.md, database.md
 
 ```bash
 # infrastructure
-docker compose up -d                       # full local stack
+docker compose up -d --build              # full local stack (needs .env from .env.example)
+docker compose up -d postgres redis mailpit   # infrastructure only, apps on the host
+docker compose config --quiet              # validate compose
 make migrate | make seed | make test       # wrappers (added in M1)
 make n8n-import | make n8n-export          # workflow sync (added in M6)
 
 # backend (cd backend)
 uv sync
-uv run uvicorn app.main:app --reload
+uv run uvicorn app.main:create_app --factory --reload
 uv run alembic upgrade head
 uv run alembic revision --autogenerate -m "<message>"   # always review the output
 uv run pytest
@@ -94,9 +98,10 @@ uv run mypy app
 # frontend (cd frontend)
 pnpm install
 pnpm dev
-pnpm lint && pnpm typecheck && pnpm test && pnpm build
-pnpm gen:api                               # regenerate types/api.d.ts from backend OpenAPI
-pnpm test:e2e
+pnpm lint && pnpm typecheck && pnpm test && pnpm build   # build needs BACKEND_INTERNAL_URL
+pnpm format:check
+pnpm gen:api                               # regenerate types/api.d.ts (added in M2)
+pnpm test:e2e                              # added in M2
 ```
 
 ## 6. Coding Conventions
