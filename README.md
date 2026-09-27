@@ -2,7 +2,7 @@
 
 Web app that turns a natural-language job request into structured search parameters, collects vacancies from reviewed sources, and explains how each one matches the user's profile.
 
-> **Status:** project foundation (roadmap M0–M2 scaffolding). Authentication, search, jobs, AI, CV processing and n8n workflows are not implemented yet.
+> **Status:** project foundation (roadmap M0–M2 scaffolding) and the database schema. Authentication, search, jobs, AI and n8n workflows are not implemented yet.
 
 ## Architecture
 
@@ -17,7 +17,7 @@ The browser talks only to the Next.js origin. FastAPI is not published (TD-05). 
 | Path | Contents |
 |---|---|
 | `frontend/` | Next.js (App Router, TypeScript strict), Tailwind CSS with design tokens, next-intl (EN/RU) |
-| `backend/` | FastAPI, Pydantic settings, async SQLAlchemy + Alembic, health/readiness endpoints |
+| `backend/` | FastAPI, Pydantic settings, async SQLAlchemy models + Alembic migrations (schema: `docs/database.md`), health/readiness endpoints |
 | `database/` | PostgreSQL init scripts (see `database/README.md`) |
 | `n8n/` | Exported workflows (none yet) and setup notes |
 | `docs/` | SRS, requirements analysis, architecture, technical decisions, roadmap |
@@ -71,7 +71,8 @@ pnpm dev                          # http://localhost:3000
 cd backend
 uv run ruff check . && uv run ruff format --check .
 uv run mypy app
-uv run pytest
+uv run pytest                     # DB tests run only when TEST_DATABASE_URL is set (backend/.env)
+uv run alembic check              # models and migrations are in sync
 
 # frontend
 cd frontend

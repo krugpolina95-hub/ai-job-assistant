@@ -7,7 +7,7 @@ from fastapi import FastAPI
 from app.api import health
 from app.core.config import Settings, get_settings
 from app.core.redis import create_redis
-from app.db.session import create_db_engine
+from app.db.session import create_db_engine, create_session_factory
 
 API_V1_PREFIX = "/api/v1"
 
@@ -16,6 +16,7 @@ API_V1_PREFIX = "/api/v1"
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     settings: Settings = app.state.settings
     app.state.db_engine = create_db_engine(settings)
+    app.state.db_session_factory = create_session_factory(app.state.db_engine)
     app.state.redis = create_redis(settings)
     try:
         yield
