@@ -20,7 +20,7 @@ The browser talks only to the Next.js origin. FastAPI is not published (TD-05). 
 | `backend/` | FastAPI, Pydantic settings, async SQLAlchemy models + Alembic migrations (schema: `docs/database.md`), health/readiness endpoints |
 | `database/` | PostgreSQL init scripts (see `database/README.md`) |
 | `n8n/` | Exported workflows (none yet) and setup notes |
-| `docs/` | SRS, requirements analysis, architecture, technical decisions, roadmap |
+| `docs/` | SRS, requirements analysis, architecture, technical decisions, roadmap, API conventions (`api.md`), database schema (`database.md`) |
 | `docker-compose.yml`, `Caddyfile` | Local stack |
 
 ## Prerequisites

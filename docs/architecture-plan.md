@@ -109,7 +109,7 @@ backend/
 ```
 
 ### 4.3 Cross-cutting middleware (in order)
-Request ID → structured access log → body size limit (64 KB) → security headers → session loader → rate limiter (Redis, per route group) → CSRF check (unsafe methods, public API only) → router → exception handler (maps to the error envelope).
+Security headers → request ID + structured access log (+ last-resort 500 envelope) → body size limit (64 KB) → session loader → rate limiter (Redis, per route group) → CSRF check (unsafe methods, public API only) → router → exception handlers (map to the error envelope). Security headers are outermost so every response gets them, including 413 and 500. All are pure ASGI middlewares in `app/api/middleware.py`.
 
 ### 4.4 Rate limit groups (initial)
 | Group | Limit |

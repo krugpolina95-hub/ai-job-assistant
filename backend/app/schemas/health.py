@@ -1,7 +1,7 @@
 from enum import StrEnum
 from typing import Literal
 
-from pydantic import BaseModel
+from app.schemas.base import OutputSchema
 
 
 class CheckStatus(StrEnum):
@@ -9,10 +9,10 @@ class CheckStatus(StrEnum):
     UNAVAILABLE = "unavailable"
 
 
-class HealthOut(BaseModel):
+class HealthOut(OutputSchema):
     status: Literal["ok"] = "ok"
 
 
-class ReadinessOut(BaseModel):
+class ReadinessOut(OutputSchema):
     status: CheckStatus
     checks: dict[str, CheckStatus]

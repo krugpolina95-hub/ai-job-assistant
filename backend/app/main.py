@@ -1,15 +1,22 @@
-import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
+import structlog
 from fastapi import FastAPI
 
-from app.api import health
+from app.api.errors import register_error_handlers
+from app.api.middleware import (
+    BodySizeLimitMiddleware,
+    RequestContextMiddleware,
+    SecurityHeadersMiddleware,
+)
+from app.api.router import API_V1_PREFIX, api_v1_router
 from app.core.config import Settings, get_settings
+from app.core.logging import configure_logging
 from app.core.redis import create_redis
 from app.db.session import create_db_engine, create_session_factory
 
-API_V1_PREFIX = "/api/v1"
+logger = structlog.stdlib.get_logger(__name__)
 
 
 @asynccontextmanager
@@ -18,16 +25,18 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.db_engine = create_db_engine(settings)
     app.state.db_session_factory = create_session_factory(app.state.db_engine)
     app.state.redis = create_redis(settings)
+    logger.info("app_started", app_env=settings.app_env)
     try:
         yield
     finally:
         await app.state.redis.aclose()
         await app.state.db_engine.dispose()
+        logger.info("app_stopped")
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or get_settings()
-    logging.basicConfig(level=settings.log_level)
+    configure_logging(settings.log_level, settings.log_format)
 
     app = FastAPI(
         title="AI Job Assistant API",
@@ -38,5 +47,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         redoc_url=None,
     )
     app.state.settings = settings
-    app.include_router(health.router, prefix=API_V1_PREFIX)
+
+    register_error_handlers(app)
+    # add_middleware prepends: the last one added is the outermost.
+    app.add_middleware(BodySizeLimitMiddleware, max_bytes=settings.max_request_body_bytes)
+    app.add_middleware(RequestContextMiddleware)
+    app.add_middleware(SecurityHeadersMiddleware)
+
+    app.include_router(api_v1_router)
     return app

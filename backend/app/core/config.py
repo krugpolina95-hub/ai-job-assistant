@@ -2,8 +2,10 @@ from enum import StrEnum
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import PostgresDsn, RedisDsn, field_validator
+from pydantic import Field, PostgresDsn, RedisDsn, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+from app.core.logging import LogFormat
 
 
 class Environment(StrEnum):
@@ -18,12 +20,14 @@ class Settings(BaseSettings):
 
     app_env: Environment = Environment.LOCAL
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO"
+    log_format: LogFormat = "json"
 
     database_url: PostgresDsn
-    database_pool_size: int = 5
+    database_pool_size: int = Field(default=5, gt=0)
     redis_url: RedisDsn
 
-    readiness_timeout_seconds: float = 2.0
+    max_request_body_bytes: int = Field(default=64 * 1024, gt=0)
+    readiness_timeout_seconds: float = Field(default=2.0, gt=0)
 
     @field_validator("database_url")
     @classmethod

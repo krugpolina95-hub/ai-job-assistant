@@ -1,8 +1,9 @@
 import asyncio
-import logging
 from collections.abc import Awaitable, Callable, Mapping
 
-logger = logging.getLogger(__name__)
+import structlog
+
+logger = structlog.stdlib.get_logger(__name__)
 
 ReadinessCheck = Callable[[], Awaitable[None]]
 
@@ -12,7 +13,7 @@ async def _run_check(name: str, check: ReadinessCheck, timeout_seconds: float) -
         await asyncio.wait_for(check(), timeout=timeout_seconds)
     except Exception as exc:
         # Any failure (refused connection, timeout, auth error) means "not ready".
-        logger.warning("readiness check failed", extra={"check": name, "error": type(exc).__name__})
+        logger.warning("readiness_check_failed", check=name, error=type(exc).__name__)
         return False
     return True
 
