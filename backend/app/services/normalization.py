@@ -165,6 +165,13 @@ def apply_storage_policy(
     return None, None
 
 
+def to_monthly(amount: Decimal | None, period: SalaryPeriod | None) -> Decimal | None:
+    """Monthly amount in the same currency (TD-14 factors); None if the period is unknown."""
+    if amount is None or period not in _MONTHLY_FACTOR:
+        return None
+    return amount * _MONTHLY_FACTOR[period]
+
+
 def to_monthly_eur(
     amount: Decimal | None,
     currency: str | None,
@@ -173,10 +180,8 @@ def to_monthly_eur(
 ) -> Decimal | None:
     """Approximate monthly EUR amount for filtering and sorting only (TD-14). Unknown period
     or currency without a rate → None: the value is never guessed."""
-    if amount is None or currency is None or period not in _MONTHLY_FACTOR:
+    monthly = to_monthly(amount, period)
+    rate = eur_rates.get(currency) if currency else None
+    if monthly is None or rate is None:
         return None
-    rate = eur_rates.get(currency)
-    if rate is None:
-        return None
-    monthly = amount * _MONTHLY_FACTOR[period] * rate
-    return monthly.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    return (monthly * rate).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)

@@ -20,7 +20,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import Settings, get_settings
 from app.core.errors import AppError
 from app.core.logging import configure_logging
+from app.core.redis import create_redis
 from app.db.session import create_db_engine, create_session_factory
+from app.integrations.sources.rate_limit import RedisSourceRateLimiter
 from app.services.source_admin_service import SourceAdminService
 from app.services.source_run_service import SourceRunService
 
@@ -81,7 +83,12 @@ async def execute(args: argparse.Namespace, db: AsyncSession, settings: Settings
                 "city": args.city,
                 "published_within_days": args.published_within_days,
             }
-            result = await SourceRunService(db, settings).run(args.key, params)
+            redis = create_redis(settings)
+            try:
+                limiter = RedisSourceRateLimiter(redis)
+                result = await SourceRunService(db, settings, limiter).run(args.key, params)
+            finally:
+                await redis.aclose()
             return dataclasses.asdict(result) | {"vacancy_ids": len(result.vacancy_ids)}
     raise AssertionError(f"unhandled command {args.command}")
 

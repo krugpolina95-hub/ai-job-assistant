@@ -28,6 +28,7 @@ async def test_every_registered_source_builds_a_conforming_adapter(key: str) -> 
     assert isinstance(adapter, SourceAdapter)
     assert adapter.key == definition.key == key
     assert adapter.rate_limits() == definition.rate_limit
+    assert adapter.filter_support == definition.filter_support
     assert definition.base_url.startswith("https://")
 
 

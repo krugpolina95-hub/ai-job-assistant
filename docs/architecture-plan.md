@@ -213,7 +213,7 @@ stateDiagram-v2
   cancelled --> [*]
 ```
 - Transitions are validated in `job_service`. A repeated identical transition is a no-op (idempotent). Illegal transitions → `409`.
-- `deadline_at = created_at + 120 s`. The sweeper (n8n Cron every minute → `POST /internal/v1/maintenance/sweep-jobs`) finalizes overdue jobs with the results they have. The same check runs lazily on `GET /search-jobs/{id}`, so stuck jobs are resolved even if n8n is down (NFR-07).
+- `deadline_at = created_at + SEARCH_JOB_DEADLINE_SECONDS` (default 120 s). The sweeper (n8n Cron every minute → `POST /internal/v1/maintenance/sweep-jobs`) finalizes overdue jobs with the results they have. The same check runs lazily on `GET /search-jobs/{id}`, so stuck jobs are resolved even if n8n is down (NFR-07).
 - **Re-run** of a search = a new job. The previous job's results stay readable until history is deleted.
 
 ### 6.3 Job context snapshot
@@ -347,8 +347,9 @@ ai_interactions log (tokens, latency, status, prompt_version; no content by defa
 
 ## 10. Source Adapter Framework
 
-- `integrations/sources/base.py`: `SourceAdapter` protocol (TD-08), `RawVacancy`, `VacancyIn`, `Capability` (which params the source can honor: keywords, location, remote, salary, date, radius).
-- **Parameter mapping:** each adapter maps `SearchParamsV1` → source query. Params the source can't honor are applied as post-filters in the backend, and a UI warning is added (e.g. "Salary filter applied after retrieval").
+- `integrations/sources/base.py`: `SourceAdapter` protocol (TD-08), `RawVacancy`, `VacancyIn`, and each adapter's `filter_support`: the mode of every search filter for that source.
+- **Filters are never silently ignored.** Per source, every requested filter has one mode: `source` (sent in the source's query and trusted), `local` (checked after retrieval on the stored, normalized vacancy; a clear mismatch is excluded, an unknown value is kept and flagged) or `unsupported` (the source never provides the data; every result is flagged). Flags are stored per result (`search_job_results.unverified_filters`) and counted per source (`search_job_sources.filter_report`); the run exposes `filter_warnings`. Skills and relocation readiness are matching inputs (TD-11), not filters. Rules: `app/services/search_filters.py`.
+- **Rate limits:** per source, a Redis token bucket plus an optional daily quota, applied to every outbound request through the HTTP client (fail closed if Redis is down). Separate from the per-user run limits (TD-12).
 - **Result caps:** ≤ 100 raw results per source per job (MVP).
 - **Normalization pipeline** (shared, per field): HTML → sanitized text, title normalization (lowercase, strip seniority tokens into `experience_level`), company normalization, location parsing (country ISO-3166, city from the GeoNames dictionary), remote-type detection, salary parsing (TD-14), skill extraction by dictionary match against `skills`/`skill_aliases` (deterministic; AI extraction is optional per GAP-26), language detection (fast local library), `canonical_url`, `content_hash`.
 - **Validation:** required = title, url, source, external_id or canonical_url. Invalid records are counted and logged, not stored.

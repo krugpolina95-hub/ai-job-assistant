@@ -18,7 +18,9 @@ from sqlalchemy.ext.asyncio import (
 )
 from sqlalchemy.pool import NullPool
 
+import app.models  # noqa: F401  (all tables on Base.metadata)
 from app.core.config import Settings
+from app.db.base import Base
 from app.main import create_app
 from tests.settings import DatabaseTestSettings
 
@@ -109,3 +111,16 @@ async def api_client(api_app: FastAPI) -> AsyncIterator[AsyncClient]:
     transport = ASGITransport(app=api_app)
     async with AsyncClient(transport=transport, base_url="https://testserver") as client:
         yield client
+
+
+@pytest_asyncio.fixture(loop_scope="session")
+async def committed_sessions(
+    db_engine: AsyncEngine,
+) -> AsyncIterator[async_sessionmaker[AsyncSession]]:
+    """Sessions that really commit, each on its own connection. For code that must run in
+    parallel (search-run workers, concurrent requests), which a single rolled-back connection
+    can't do. Every table is emptied afterwards."""
+    yield async_sessionmaker(db_engine, expire_on_commit=False, autoflush=False)
+    tables = ", ".join(table.name for table in Base.metadata.sorted_tables)
+    async with db_engine.begin() as connection:
+        await connection.execute(text(f"TRUNCATE {tables} RESTART IDENTITY CASCADE"))

@@ -9,8 +9,9 @@ records it per source and decides about retries, so one failing source never bre
 
 import time
 import uuid
-from collections.abc import Mapping
+from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from typing import Any
 
 import httpx
@@ -20,8 +21,18 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import Settings
 from app.core.enums import SearchJobSourceStatus
 from app.core.errors import SourceNotEnabledError
-from app.integrations.sources.base import SourceError, SourceTimeoutError
-from app.integrations.sources.registry import SourceContext, get_source_definition, user_agent
+from app.integrations.sources.base import (
+    RETRYABLE_SOURCE_ERRORS,
+    SourceError,
+    SourceTimeoutError,
+)
+from app.integrations.sources.rate_limit import SourceRateLimiter
+from app.integrations.sources.registry import (
+    SourceContext,
+    SourceDefinition,
+    get_source_definition,
+    user_agent,
+)
 from app.repositories.source import SourceRepository
 from app.services.vacancy_ingest_service import VacancyIngestService
 
@@ -40,15 +51,20 @@ class SourceRunResult:
     duration_ms: int = 0
     error_code: str | None = None
     error_message: str | None = None
+    retryable: bool = False
     vacancy_ids: list[uuid.UUID] = field(default_factory=list)
 
 
 class SourceRunService:
-    def __init__(self, db: AsyncSession, settings: Settings) -> None:
+    def __init__(self, db: AsyncSession, settings: Settings, limiter: SourceRateLimiter) -> None:
         self._db = db
         self._settings = settings
+        self._limiter = limiter
 
-    async def run(self, key: str, params: Mapping[str, Any]) -> SourceRunResult:
+    async def run(
+        self, key: str, params: Mapping[str, Any], *, deadline: datetime | None = None
+    ) -> SourceRunResult:
+        """`deadline`: waits for the source's rate limit never extend past it."""
         definition = get_source_definition(key)
         source = await SourceRepository(self._db).get_by_key(key)
         # Compliance gate before any outbound request (TD-08, CLAUDE.md §7).
@@ -60,6 +76,8 @@ class SourceRunService:
             timeout=self._settings.source_http_timeout_seconds,
             headers={"User-Agent": user_agent(self._settings)},
             follow_redirects=False,
+            # Every outbound request of every adapter passes the source's rate limit.
+            event_hooks={"request": [self._rate_limit_hook(definition, deadline)]},
         ) as http:
             try:
                 adapter = definition.build(SourceContext(settings=self._settings, http=http))
@@ -75,6 +93,7 @@ class SourceRunService:
                     duration_ms=_elapsed_ms(started),
                     error_code=exc.code,
                     error_message=exc.message,
+                    retryable=exc.code in RETRYABLE_SOURCE_ERRORS,
                 )
                 logger.warning(
                     "source_run_failed", source=key, error_code=exc.code, error=exc.message
@@ -103,6 +122,18 @@ class SourceRunService:
             duration_ms=result.duration_ms,
         )
         return result
+
+    def _rate_limit_hook(
+        self, definition: SourceDefinition, deadline: datetime | None
+    ) -> Callable[[httpx.Request], Awaitable[None]]:
+        async def acquire(_request: httpx.Request) -> None:
+            max_wait = self._settings.source_rate_limit_max_wait_seconds
+            if deadline is not None:
+                remaining = (deadline - datetime.now(UTC)).total_seconds()
+                max_wait = max(0.0, min(max_wait, remaining))
+            await self._limiter.acquire(definition.key, definition.rate_limit, max_wait=max_wait)
+
+        return acquire
 
 
 def _elapsed_ms(started: float) -> int:

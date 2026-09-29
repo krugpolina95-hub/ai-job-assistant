@@ -2,6 +2,7 @@
 (TD-13, TD-16, SOURCE-004, VACANCY-003/004)."""
 
 import uuid
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal, InvalidOperation
 from typing import Any
@@ -45,11 +46,18 @@ class VacancyService:
     def __init__(self, db: AsyncSession) -> None:
         self._vacancies = VacancyRepository(db)
 
-    async def list_for_user(self, user_id: uuid.UUID, params: VacancyListParams) -> VacancyPageOut:
+    async def list_for_user(
+        self,
+        user_id: uuid.UUID,
+        params: VacancyListParams,
+        *,
+        search_job_id: uuid.UUID | None = None,
+    ) -> VacancyPageOut:
+        """`search_job_id` narrows the list to one run; the caller checks it is the user's."""
         now = datetime.now(UTC)
         page = await self._vacancies.list_visible(
             user_id,
-            _to_filter(params, now),
+            replace(_to_filter(params, now), search_job_id=search_job_id),
             sort=params.sort,
             after=_read_cursor(params.cursor, params.sort) if params.cursor else None,
             limit=params.limit,

@@ -16,6 +16,9 @@ from app.core.logging import configure_logging
 from app.core.redis import create_redis
 from app.core.security import PasswordHasher
 from app.db.session import create_db_engine, create_session_factory
+from app.integrations.sources.rate_limit import RedisSourceRateLimiter
+from app.services.dispatch import InlineDispatcher
+from app.services.job_runner import SearchJobRunner
 
 logger = structlog.stdlib.get_logger(__name__)
 
@@ -26,10 +29,17 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.db_engine = create_db_engine(settings)
     app.state.db_session_factory = create_session_factory(app.state.db_engine)
     app.state.redis = create_redis(settings)
-    logger.info("app_started", app_env=settings.app_env)
+    dispatcher = InlineDispatcher(
+        SearchJobRunner(
+            app.state.db_session_factory, settings, RedisSourceRateLimiter(app.state.redis)
+        )
+    )
+    app.state.dispatcher = dispatcher
+    logger.info("app_started", app_env=settings.app_env, job_dispatcher=settings.job_dispatcher)
     try:
         yield
     finally:
+        await dispatcher.drain()
         await app.state.redis.aclose()
         await app.state.db_engine.dispose()
         logger.info("app_stopped")

@@ -13,6 +13,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from app.core.enums import FilterMode, SearchFilter
 from app.integrations.sources.base import RateLimit, RawVacancy
 from app.schemas.vacancy import VacancyIn
 
@@ -26,6 +27,12 @@ def load_fixtures() -> list[dict[str, Any]]:
 
 
 class MockSourceAdapter:
+    # search() matches roles/keywords against titles; everything else is in its records.
+    filter_support: Mapping[SearchFilter, FilterMode] = {
+        SearchFilter.KEYWORDS: FilterMode.SOURCE,
+        SearchFilter.RADIUS: FilterMode.UNSUPPORTED,  # no coordinates
+    }
+
     def __init__(self, key: str = "mock", records: Sequence[RawVacancy] | None = None) -> None:
         self.key = key
         self._records = list(records) if records is not None else load_fixtures()

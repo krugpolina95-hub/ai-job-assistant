@@ -5,7 +5,16 @@ from datetime import datetime
 from decimal import Decimal
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import CheckConstraint, ForeignKey, Index, Numeric, Text, UniqueConstraint, text
+from sqlalchemy import (
+    CheckConstraint,
+    ForeignKey,
+    Index,
+    Numeric,
+    SmallInteger,
+    Text,
+    UniqueConstraint,
+    text,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.enums import ACTIVE_SEARCH_JOB_STATUSES, SearchJobSourceStatus, SearchJobStatus
@@ -29,6 +38,15 @@ class SearchJob(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     __table_args__ = (
         UniqueConstraint("user_id", "idempotency_key"),
         Index("ix_search_jobs_search_id_created_at", "search_id", text("created_at DESC")),
+        # Runs per user per hour (TD-12).
+        Index("ix_search_jobs_user_id_created_at", "user_id", "created_at"),
+        # One active run per search, even under concurrent requests (TD-12).
+        Index(
+            "uq_search_jobs_active_search_id",
+            "search_id",
+            unique=True,
+            postgresql_where=_ACTIVE_STATUSES_SQL,
+        ),
         # Serves the per-user active-job limit and the stuck-job sweeper.
         Index("ix_search_jobs_active_user_id", "user_id", postgresql_where=_ACTIVE_STATUSES_SQL),
         Index(
@@ -86,6 +104,7 @@ class SearchJobSource(TimestampMixin, Base):
         non_negative_check("fetched_count"),
         non_negative_check("stored_count"),
         non_negative_check("duration_ms"),
+        non_negative_check("attempts"),
     )
 
     search_job_id: Mapped[uuid.UUID] = mapped_column(
@@ -101,6 +120,11 @@ class SearchJobSource(TimestampMixin, Base):
     stored_count: Mapped[int] = mapped_column(server_default=text("0"))
     error_code: Mapped[str | None] = mapped_column(Text)
     duration_ms: Mapped[int | None]
+    attempts: Mapped[int] = mapped_column(SmallInteger, server_default=text("0"))
+    started_at: Mapped[datetime | None]
+    finished_at: Mapped[datetime | None]
+    # {filter: {"mode": source|local|unsupported, "excluded": n, "unverified": n}}
+    filter_report: Mapped[dict[str, Any]] = mapped_column(server_default=text("'{}'::jsonb"))
 
     search_job: Mapped[SearchJob] = relationship(back_populates="source_runs", lazy="raise")
     source: Mapped[Source] = relationship(lazy="raise")
@@ -125,6 +149,8 @@ class SearchJobResult(CreatedAtMixin, Base):
     )
     rank: Mapped[int]
     match_score: Mapped[Decimal | None] = mapped_column(Numeric(5, 4))
+    # Requested filters this vacancy could not be checked against (never silently "matching").
+    unverified_filters: Mapped[list[str]] = mapped_column(server_default=text("'[]'::jsonb"))
 
     search_job: Mapped[SearchJob] = relationship(back_populates="results", lazy="raise")
     vacancy: Mapped[Vacancy] = relationship(lazy="raise")

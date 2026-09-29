@@ -89,6 +89,12 @@ class SearchJobStatus(StrEnum):
 
 
 ACTIVE_SEARCH_JOB_STATUSES = (SearchJobStatus.PENDING, SearchJobStatus.RUNNING)
+TERMINAL_SEARCH_JOB_STATUSES = (
+    SearchJobStatus.COMPLETED,
+    SearchJobStatus.PARTIALLY_COMPLETED,
+    SearchJobStatus.FAILED,
+    SearchJobStatus.CANCELLED,
+)
 
 
 class SearchJobSourceStatus(StrEnum):
@@ -98,6 +104,31 @@ class SearchJobSourceStatus(StrEnum):
     FAILED = "failed"
     TIMED_OUT = "timed_out"
     SKIPPED = "skipped"
+
+
+class SearchFilter(StrEnum):
+    """User search parameters that restrict results. Skills and relocation readiness are not
+    filters: they feed matching (TD-11)."""
+
+    KEYWORDS = "keywords"  # roles + keywords
+    COUNTRY = "country"
+    REGION = "region"
+    CITY = "city"
+    RADIUS = "radius"
+    SALARY = "salary"
+    WORK_FORMATS = "work_formats"
+    EXPERIENCE_LEVELS = "experience_levels"
+    EMPLOYMENT_TYPES = "employment_types"
+    VACANCY_LANGUAGES = "vacancy_languages"
+    PUBLISHED_WITHIN_DAYS = "published_within_days"
+
+
+class FilterMode(StrEnum):
+    """How a source handles a filter. Never silent: every active filter gets one."""
+
+    SOURCE = "source"  # sent to the source; the source's own search applies it
+    LOCAL = "local"  # checked after retrieval on the normalized vacancy data
+    UNSUPPORTED = "unsupported"  # the source never provides the data: results stay unverified
 
 
 class MatchLevel(StrEnum):

@@ -24,6 +24,12 @@ class ErrorCode(StrEnum):
     CONFLICT = "CONFLICT"
     EMAIL_ALREADY_REGISTERED = "EMAIL_ALREADY_REGISTERED"
     SOURCE_NOT_ENABLED = "SOURCE_NOT_ENABLED"
+    SEARCH_NOT_CONFIRMED = "SEARCH_NOT_CONFIRMED"
+    NO_SOURCES_ENABLED = "NO_SOURCES_ENABLED"
+    JOB_LIMIT_REACHED = "JOB_LIMIT_REACHED"
+    RATE_LIMITED = "RATE_LIMITED"
+    IDEMPOTENCY_KEY_REUSED = "IDEMPOTENCY_KEY_REUSED"
+    JOB_ALREADY_FINISHED = "JOB_ALREADY_FINISHED"
     PAYLOAD_TOO_LARGE = "PAYLOAD_TOO_LARGE"
     INTERNAL_ERROR = "INTERNAL_ERROR"
 
@@ -104,3 +110,41 @@ class SourceNotEnabledError(AppError):
     code = ErrorCode.SOURCE_NOT_ENABLED
     status_code = HTTPStatus.CONFLICT
     default_message = "Source is not registered or not enabled"
+
+
+class SearchNotConfirmedError(AppError):
+    """Only confirmed parameters run (SEARCH-004/005)."""
+
+    code = ErrorCode.SEARCH_NOT_CONFIRMED
+    status_code = HTTPStatus.CONFLICT
+    default_message = "Confirm the search parameters before running the search"
+
+
+class NoSourcesEnabledError(AppError):
+    code = ErrorCode.NO_SOURCES_ENABLED
+    status_code = HTTPStatus.CONFLICT
+    default_message = "No job source is currently enabled"
+
+
+class JobLimitReachedError(AppError):
+    code = ErrorCode.JOB_LIMIT_REACHED
+    status_code = HTTPStatus.CONFLICT
+    default_message = "Too many searches are running; wait for one to finish"
+
+
+class RateLimitedError(AppError):
+    code = ErrorCode.RATE_LIMITED
+    status_code = HTTPStatus.TOO_MANY_REQUESTS
+    default_message = "Too many requests; try again later"
+
+
+class IdempotencyKeyReusedError(AppError):
+    code = ErrorCode.IDEMPOTENCY_KEY_REUSED
+    status_code = HTTPStatus.CONFLICT
+    default_message = "This Idempotency-Key was already used for another search"
+
+
+class JobAlreadyFinishedError(AppError):
+    code = ErrorCode.JOB_ALREADY_FINISHED
+    status_code = HTTPStatus.CONFLICT
+    default_message = "The search run has already finished"

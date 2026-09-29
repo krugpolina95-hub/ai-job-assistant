@@ -33,7 +33,9 @@ Protected routes use the `CurrentAuth` dependency; unsafe ones use `CsrfProtecte
 | SSRF | Each adapter calls one fixed host (Adzuna: `api.adzuna.com` over HTTPS). Redirects are not followed. URLs from users or from source data are never fetched; source links are only stored and shown. Adzuna links must point to an Adzuna domain or the record is rejected. |
 | Credentials | From environment variables only (`ADZUNA_APP_ID`, `ADZUNA_APP_KEY`). Adzuna takes the key as a URL parameter, so: httpx request logging is limited to warnings (it logs full URLs at INFO), httpx exceptions are never chained into our errors (they contain the URL), and source error messages never include URLs. Tests verify the key appears in neither logs nor errors. |
 | Untrusted data | Source records are validated (`VacancyIn`), HTML is converted to plain text on ingest, and one bad record never fails a batch. |
-| Bounded cost | At most 100 results (2 requests) per source run; request timeout `SOURCE_HTTP_TIMEOUT_SECONDS`. Per-source rate limiting in Redis is still missing (M5.6). |
+| Bounded cost | At most 100 results (2 requests) per source run; request timeout `SOURCE_HTTP_TIMEOUT_SECONDS`. |
+| Source rate limits | Every outbound request takes a token from the source's Redis bucket (Adzuna 25/min) and its daily quota (Adzuna 250/day), atomically across processes. Short waits are bounded by `SOURCE_RATE_LIMIT_MAX_WAIT_SECONDS` and the run deadline; a spent quota fails the source without a request; if Redis is unreachable the source fails closed (`SOURCE_RATE_LIMITER_UNAVAILABLE`). |
+| User run limits | Separate from source limits: at most `SEARCH_MAX_ACTIVE_JOBS_PER_USER` active runs (enforced under a per-user row lock) and `SEARCH_MAX_RUNS_PER_HOUR` runs per hour; one active run per search (unique index); `Idempotency-Key` replays return the same run. |
 
 ## Logging and secrets
 

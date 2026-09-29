@@ -64,6 +64,12 @@ Defined in `backend/app/core/errors.py`. New codes are added with the feature th
 | `CONFLICT` | 409 | The request conflicts with the current state (`ConflictError`). |
 | `EMAIL_ALREADY_REGISTERED` | 409 | Registration with an email that already has an account (case-insensitive). |
 | `SOURCE_NOT_ENABLED` | 409 | Ingestion for a source that is unknown, disabled or not compliance-reviewed. Internal ingestion only; not returned by public endpoints. |
+| `SEARCH_NOT_CONFIRMED` | 409 | Running a search whose parameters aren't confirmed. |
+| `NO_SOURCES_ENABLED` | 409 | Running a search while no job source is enabled. |
+| `JOB_LIMIT_REACHED` | 409 | The user already has the maximum number of active runs. |
+| `IDEMPOTENCY_KEY_REUSED` | 409 | An `Idempotency-Key` already used for a different search. |
+| `JOB_ALREADY_FINISHED` | 409 | Cancelling a run that already completed or failed. |
+| `RATE_LIMITED` | 429 | Too many search runs in the last hour. |
 | `PAYLOAD_TOO_LARGE` | 413 | The body exceeds 64 KB (declared `Content-Length` or streamed). |
 | `INTERNAL_ERROR` | 500 | Any unexpected exception. The message is always generic, and details are only in the logs under the same `request_id`. |
 
@@ -125,3 +131,37 @@ A user sees only vacancies **visible to them**: those in results of their own se
 - `freshness` is `fresh`, `stale` (published over 30 days ago or not re-verified for 7 days, AMB-11) or `removed` (closed at the source). Show a warning for anything but `fresh` (SOURCE-004, VACANCY-004).
 
 **`VacancyDetailOut`** adds `description` (only when the source's storage policy allows full text, TD-23), `requirements`, `responsibilities`, `skills`, `language`, `salary_raw`, `location_raw`, `removed_at`.
+
+### Searches and search runs
+
+| Method | Path | Auth | Success |
+|---|---|---|---|
+| POST | `/api/v1/searches` | session + CSRF | `201 SearchOut`. Body `{title?, params: SearchParamsV1}`; stored `confirmed` (the UI shows the review step, SEARCH-004/005). |
+| GET | `/api/v1/searches/{id}` | session | `200 SearchOut` |
+| POST | `/api/v1/searches/{id}/run` | session + CSRF | `202 SearchJobOut` (new run) or `200` (the same run: `Idempotency-Key` replay, or the search already has an active run). |
+| GET | `/api/v1/searches/{id}/jobs` | session | `200 {items: SearchJobOut[], next_cursor}`, newest first. |
+| GET | `/api/v1/search-jobs/{id}` | session | `200 SearchJobOut` with `ETag`; `304` for a matching `If-None-Match`. Poll every 2–5 s until a terminal status (TD-25). |
+| POST | `/api/v1/search-jobs/{id}/cancel` | session + CSRF | `200 SearchJobOut` (`cancelled`; repeating is harmless) or `409 JOB_ALREADY_FINISHED`. |
+| GET | `/api/v1/search-jobs/{id}/results` | session | `200 {items: JobResultOut[], next_cursor}`: the run's vacancies with the `/vacancies` query parameters, sorting, cursor and duplicate grouping. |
+
+Another user's search or run is `404` everywhere.
+
+**`SearchParamsV1`** (TD-10): `roles[]` (1–10, required, SEARCH-003), `keywords[]`, `salary {min?, max?, currency, period=month}` (min ≤ max, ≥ 0, ISO currency), `location {country?, region?, city?, radius_km?}` (radius needs a city), `work_formats[]`, `experience_levels[]`, `employment_types[]`, `vacancy_languages[]`, `published_within_days`, plus `skills[]` and `relocation_ready`, which feed matching and are not filters.
+
+**Run lifecycle:** `pending → running → completed | partially_completed | failed`, or `cancelled`. A run gets one row per enabled source; each source runs independently:
+- `completed`: every source succeeded (even with 0 results). `partially_completed`: at least one succeeded and at least one failed or timed out. `failed`: none succeeded (`error_code` `ALL_SOURCES_FAILED`, or `NO_SOURCES_RAN` if every source was disabled after creation). One failing source never fails the others.
+- Retryable source errors (`SOURCE_UNAVAILABLE`, `SOURCE_TIMEOUT`, `SOURCE_RATE_LIMITED`, `SOURCE_RATE_LIMITER_UNAVAILABLE`) are retried up to `SOURCE_RUN_MAX_ATTEMPTS` while time remains; others (`SOURCE_AUTH_FAILED`, `SOURCE_BAD_RESPONSE`, `SOURCE_NOT_CONFIGURED`, `SOURCE_QUOTA_EXHAUSTED`) are final.
+- At the deadline (`SEARCH_JOB_DEADLINE_SECONDS`, default 120 s) the run is finalized with what it has; unfinished sources become `timed_out` / `SOURCE_DEADLINE_EXCEEDED`. This also happens on the next read if the worker died.
+- Cancel ends the run at once; sources still in flight finish importing, but their results are not linked (`SOURCE_RUN_CANCELLED`).
+
+**`SearchJobOut`:** `id, search_id, status, progress {sources_total, sources_done, results_so_far}, result_count, error_code, sources[], filter_warnings[], created_at, started_at, finished_at, deadline_at`. Each source: `key, name, status, attempts, fetched_count, stored_count, error_code, filters`.
+
+**Filters a source can't apply are never silently ignored.** For each requested filter, `sources[].filters[filter]` is `{mode, excluded, unverified}`:
+
+| Mode | Meaning |
+|---|---|
+| `source` | Sent in the source's query; its results are trusted for this filter. |
+| `local` | Checked after retrieval on the normalized vacancy. Clear mismatches are excluded (`excluded`); vacancies without the needed data are kept and flagged (`unverified`). |
+| `unsupported` | The source never provides the data (e.g. Adzuna: work format, experience level, language, radius). Every result is flagged. |
+
+`filter_warnings[]` summarizes this per filter: `{filter, unsupported_by: [source keys], unverified_results}`, and every result in `/results` lists its `unverified_filters`. The UI must show these instead of presenting such results as matches. Salary filters compare monthly amounts in the same currency; other currencies stay unverified until FX rates (M5.11).

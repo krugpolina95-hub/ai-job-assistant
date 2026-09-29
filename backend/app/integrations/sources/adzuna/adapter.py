@@ -20,7 +20,7 @@ from urllib.parse import urlsplit
 
 import httpx
 
-from app.core.enums import EmploymentType, SalaryPeriod
+from app.core.enums import EmploymentType, FilterMode, SalaryPeriod, SearchFilter
 from app.integrations.sources.base import (
     MAX_RESULTS_PER_RUN,
     RateLimit,
@@ -69,6 +69,20 @@ _CENTS = Decimal("0.01")
 
 class AdzunaAdapter:
     key = "adzuna"
+    # Sent in the query: `what`, country path, `where`, `max_days_old`. Adzuna never returns
+    # work format, experience level, language or coordinates, so those filters can't be checked.
+    # Its salary filter would also match its own estimates, so salary is checked locally on the
+    # published salaries we keep.
+    filter_support: Mapping[SearchFilter, FilterMode] = {
+        SearchFilter.KEYWORDS: FilterMode.SOURCE,
+        SearchFilter.COUNTRY: FilterMode.SOURCE,
+        SearchFilter.CITY: FilterMode.SOURCE,
+        SearchFilter.PUBLISHED_WITHIN_DAYS: FilterMode.SOURCE,
+        SearchFilter.WORK_FORMATS: FilterMode.UNSUPPORTED,
+        SearchFilter.EXPERIENCE_LEVELS: FilterMode.UNSUPPORTED,
+        SearchFilter.VACANCY_LANGUAGES: FilterMode.UNSUPPORTED,
+        SearchFilter.RADIUS: FilterMode.UNSUPPORTED,
+    }
     RATE_LIMIT: ClassVar[RateLimit] = RateLimit(requests=25, per_seconds=60, requests_per_day=250)
 
     def __init__(self, *, app_id: str | None, app_key: str | None, http: httpx.AsyncClient) -> None:

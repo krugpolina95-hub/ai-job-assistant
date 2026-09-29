@@ -23,6 +23,7 @@ from app.services.source_admin_service import ComplianceReviewRequiredError, Sou
 from app.services.source_run_service import SourceRunService
 from tests.conftest import build_test_settings
 from tests.integration.db.factories import show_to_user
+from tests.integration.db.search_helpers import ScriptedLimiter
 
 pytestmark = pytest.mark.asyncio(loop_scope="session")
 
@@ -106,7 +107,7 @@ async def test_disabled_or_unknown_source_makes_no_request(
     with respx.mock(assert_all_called=False) as mock:
         route = mock.get(url__startswith="https://")
         with pytest.raises(SourceNotEnabledError):
-            await SourceRunService(db_session, CONFIGURED).run(key, QUERY)
+            await SourceRunService(db_session, CONFIGURED, ScriptedLimiter()).run(key, QUERY)
 
     assert not route.called
 
@@ -119,7 +120,9 @@ async def test_adzuna_run_imports_normalized_vacancies(db_session: AsyncSession)
 
     with respx.mock(assert_all_called=True) as mock:
         route = mock.get(PAGE_1).respond(json=adzuna_page())
-        result = await SourceRunService(db_session, CONFIGURED).run("adzuna", QUERY)
+        result = await SourceRunService(db_session, CONFIGURED, ScriptedLimiter()).run(
+            "adzuna", QUERY
+        )
 
     assert result.status is SearchJobSourceStatus.SUCCEEDED
     # 6 results: 4004 links outside Adzuna (validation), 4005 has no link (normalizer).
@@ -141,7 +144,7 @@ async def test_adzuna_run_imports_normalized_vacancies(db_session: AsyncSession)
 
 async def test_rerun_updates_instead_of_duplicating(db_session: AsyncSession) -> None:
     await enabled_sources(db_session, "adzuna")
-    service = SourceRunService(db_session, CONFIGURED)
+    service = SourceRunService(db_session, CONFIGURED, ScriptedLimiter())
 
     with respx.mock() as mock:
         mock.get(PAGE_1).respond(json=adzuna_page())
@@ -163,7 +166,9 @@ async def test_imported_vacancies_use_the_internal_model_in_the_api(
     await enabled_sources(db_session, "adzuna")
     with respx.mock() as mock:
         mock.get(PAGE_1).respond(json=adzuna_page())
-        result = await SourceRunService(db_session, CONFIGURED).run("adzuna", QUERY)
+        result = await SourceRunService(db_session, CONFIGURED, ScriptedLimiter()).run(
+            "adzuna", QUERY
+        )
     stored = await adzuna_vacancies(db_session)
     await show_to_user(db_session, registered.json()["id"], list(stored.values()))
 
@@ -185,7 +190,9 @@ async def test_imported_vacancies_use_the_internal_model_in_the_api(
 async def test_another_source_runs_through_the_same_pipeline(db_session: AsyncSession) -> None:
     await enabled_sources(db_session, "mock")
 
-    result = await SourceRunService(db_session, CONFIGURED).run("mock", {"country": "LT"})
+    result = await SourceRunService(db_session, CONFIGURED, ScriptedLimiter()).run(
+        "mock", {"country": "LT"}
+    )
 
     assert result.status is SearchJobSourceStatus.SUCCEEDED
     assert result.created > 0
@@ -214,7 +221,9 @@ async def test_source_failure_is_reported_and_stores_nothing(
             route.mock(side_effect=response)
         else:
             route.mock(return_value=response)
-        result = await SourceRunService(db_session, CONFIGURED).run("adzuna", QUERY)
+        result = await SourceRunService(db_session, CONFIGURED, ScriptedLimiter()).run(
+            "adzuna", QUERY
+        )
 
     assert (result.status, result.error_code) == (status, code)
     assert result.error_message and "secret-key" not in result.error_message
@@ -227,7 +236,9 @@ async def test_missing_configuration_fails_without_a_request(db_session: AsyncSe
 
     with respx.mock(assert_all_called=False) as mock:
         route = mock.get(url__startswith=BASE_URL)
-        result = await SourceRunService(db_session, unconfigured).run("adzuna", QUERY)
+        result = await SourceRunService(db_session, unconfigured, ScriptedLimiter()).run(
+            "adzuna", QUERY
+        )
 
     assert (result.status, result.error_code) == (
         SearchJobSourceStatus.FAILED,

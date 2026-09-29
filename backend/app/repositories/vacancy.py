@@ -36,6 +36,7 @@ class VacancyFilter:
     min_monthly_eur: Decimal | None = None
     published_since: datetime | None = None
     include_inactive: bool = False
+    search_job_id: uuid.UUID | None = None
 
 
 @dataclass(frozen=True)
@@ -219,6 +220,14 @@ def _visible_to(user_id: uuid.UUID) -> Select[tuple[uuid.UUID]]:
 
 def _apply_filters[T: tuple[Any, ...]](statement: Select[T], filters: VacancyFilter) -> Select[T]:
     conditions: list[ColumnElement[bool]] = []
+    if filters.search_job_id is not None:
+        conditions.append(
+            Vacancy.id.in_(
+                select(SearchJobResult.vacancy_id).where(
+                    SearchJobResult.search_job_id == filters.search_job_id
+                )
+            )
+        )
     if not filters.include_inactive:
         conditions.append(Vacancy.is_active.is_(True))
     if filters.text:

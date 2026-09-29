@@ -57,6 +57,21 @@ class Settings(BaseSettings):
     adzuna_app_id: str | None = Field(default=None, min_length=1, max_length=100)
     adzuna_app_key: SecretStr | None = Field(default=None, min_length=1, max_length=200)
 
+    # Per-source API limits (TD-08, TD-18): longest wait for a rate-limit token before the source
+    # fails with SOURCE_RATE_LIMITED, and automatic attempts per source in one search run.
+    source_rate_limit_max_wait_seconds: float = Field(default=5.0, ge=0, le=60)
+    source_run_max_attempts: int = Field(default=2, ge=1, le=5)
+    source_retry_delay_seconds: float = Field(default=1.0, ge=0, le=30)
+    # A claimed source run that hasn't reported back within this time may be claimed again.
+    source_run_lease_seconds: int = Field(default=60, ge=5, le=3600)
+
+    # Search runs (SEARCH-006, TD-12). User-level limits are separate from source limits above.
+    job_dispatcher: Literal["inline"] = "inline"  # "n8n" arrives with M6 (TD-09)
+    search_job_deadline_seconds: int = Field(default=120, ge=10, le=3600)
+    search_max_active_jobs_per_user: int = Field(default=2, ge=1, le=20)
+    search_max_runs_per_hour: int = Field(default=20, ge=1, le=1000)
+    search_max_results_per_job: int = Field(default=200, ge=1, le=1000)
+
     # Versions of the legal documents a user accepts at registration (AUTH-002, GAP-05).
     legal_terms_version: str = Field(min_length=1, max_length=64)
     legal_privacy_version: str = Field(min_length=1, max_length=64)

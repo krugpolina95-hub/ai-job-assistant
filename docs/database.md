@@ -1,6 +1,6 @@
 # Database Schema
 
-PostgreSQL 16. The schema is owned by Alembic migrations in `backend/alembic/versions/`. ORM models live in `backend/app/models/`. This document describes the schema at revision **`af0f71f9d25c`** (`ff0fd9cabbe9` initial MVP schema + `af0f71f9d25c` user sessions).
+PostgreSQL 16. The schema is owned by Alembic migrations in `backend/alembic/versions/`. ORM models live in `backend/app/models/`. This document describes the schema at revision **`008e13f9596a`** (`ff0fd9cabbe9` initial MVP schema, `af0f71f9d25c` user sessions, `008e13f9596a` search-run tracking).
 
 Related: `architecture-plan.md` §7 (data architecture), TD-12 (idempotency), TD-13 (results), TD-14 (salary), TD-16 (dedup), TD-23 (storage policy), TD-24 (deletion), TD-26 (IDs).
 
@@ -224,15 +224,15 @@ One asynchronous run of a search (SEARCH-006). The transition rules live in the 
 | status | text **NN** | `pending \| running \| completed \| partially_completed \| failed \| cancelled`, default `pending`. |
 | idempotency_key | text | **UNIQUE `(user_id, idempotency_key)`** (TD-12). |
 | request_id | text | Correlation ID (TD-21). |
-| context | jsonb **NN** | Params + permitted profile snapshot (architecture §6.3). |
+| context | jsonb **NN** | Snapshot at creation: `{params (SearchParamsV1), params_schema_version}`. The permitted profile subset (architecture §6.3) is added with M4. |
 | progress | jsonb **NN** | `{sources_total, sources_done, results_so_far}` (TD-25). |
-| deadline_at | timestamptz **NN** | `created_at + 120 s`. |
+| deadline_at | timestamptz **NN** | `created_at + SEARCH_JOB_DEADLINE_SECONDS` (default 120 s). |
 | cancel_requested_at, started_at, finished_at | timestamptz | CHECK `finished_at ≥ started_at`. |
 | error_code, error_message | text | |
 | result_count | integer **NN** | Default 0, ≥ 0. |
 | created_at, updated_at | timestamptz **NN** | |
 
-Partial indexes `WHERE status IN ('pending','running')`: `ix_search_jobs_active_user_id` (max 2 active jobs per user) and `ix_search_jobs_active_deadline_at` (stuck-job sweeper).
+Partial indexes `WHERE status IN ('pending','running')`: `ix_search_jobs_active_user_id` (active runs per user), `ix_search_jobs_active_deadline_at` (stuck-job sweeper) and the **unique** `uq_search_jobs_active_search_id` (at most one active run per search, even under concurrent requests). `ix_search_jobs_user_id_created_at` serves the runs-per-hour limit.
 
 ### search_job_sources
 Per-source outcome of a job, used to decide `completed` vs `partially_completed`. PK `(search_job_id, source_id)`.
@@ -242,9 +242,13 @@ Per-source outcome of a job, used to decide `completed` vs `partially_completed`
 | search_job_id | uuid **NN** | FK `search_jobs` CASCADE. |
 | source_id | uuid **NN** | FK `sources` RESTRICT. Indexed. |
 | status | text **NN** | `pending \| running \| succeeded \| failed \| timed_out \| skipped`, default `pending`. |
-| fetched_count, stored_count | integer **NN** | Default 0, ≥ 0. |
-| error_code | text | |
+| fetched_count | integer **NN** | Raw records the source returned. |
+| stored_count | integer **NN** | Vacancies this source linked to the run (after filters and dedup). |
+| error_code | text | Typed `SourceErrorCode` (e.g. `SOURCE_UNAVAILABLE`, `SOURCE_QUOTA_EXHAUSTED`, `SOURCE_DEADLINE_EXCEEDED`, `SOURCE_RUN_CANCELLED`). Never a raw message. |
 | duration_ms | integer | ≥ 0. |
+| attempts | smallint **NN** | Claims so far, ≥ 0. Also the fencing token: an outcome is stored only by the claim with the current attempt number. |
+| started_at, finished_at | timestamptz | Claim time (a `running` row older than `SOURCE_RUN_LEASE_SECONDS` may be reclaimed) and outcome time. |
+| filter_report | jsonb **NN** | Per requested filter: `{"mode": "source\|local\|unsupported", "excluded": n, "unverified": n}`. |
 | created_at, updated_at | timestamptz **NN** | |
 
 ### search_job_results
@@ -256,7 +260,10 @@ Vacancies returned by a job, at most 200 per job (TD-13). PK `(search_job_id, va
 | vacancy_id | uuid **NN** | FK `vacancies` CASCADE. Indexed. |
 | rank | integer **NN** | > 0. |
 | match_score | numeric(5,4) | 0–1. Internal sort key, never shown to users (MATCH-003). |
+| unverified_filters | jsonb **NN** | Requested filters this vacancy could not be checked against (default `[]`). |
 | created_at | timestamptz **NN** | |
+
+Rows are inserted in arrival order with `ON CONFLICT DO NOTHING`, so retries and re-sightings never duplicate a link.
 
 ### vacancy_matches
 Deterministic match result per job and vacancy (TD-11). **UNIQUE `(search_job_id, vacancy_id)`**.

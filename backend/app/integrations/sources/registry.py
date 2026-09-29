@@ -9,13 +9,13 @@ attribution). Whether a source may run is decided in the database (`sources.is_e
 `compliance_reviewed_at`) by a person, never by code.
 """
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 
 import httpx
 
 from app.core.config import Settings
-from app.core.enums import SourceType, StoragePolicy
+from app.core.enums import FilterMode, SearchFilter, SourceType, StoragePolicy
 from app.integrations.sources.adzuna.adapter import AdzunaAdapter
 from app.integrations.sources.base import RateLimit, SourceAdapter, SourceNotConfiguredError
 from app.integrations.sources.mock.adapter import MockSourceAdapter
@@ -40,6 +40,7 @@ class SourceDefinition:
     source_type: SourceType
     storage_policy: StoragePolicy
     rate_limit: RateLimit
+    filter_support: Mapping[SearchFilter, FilterMode]
     build: Callable[[SourceContext], SourceAdapter]
     terms_url: str | None = None
     attribution_text: str | None = None
@@ -75,6 +76,7 @@ SOURCES: dict[str, SourceDefinition] = {
             source_type=SourceType.API,
             storage_policy=StoragePolicy.FULL,
             rate_limit=MockSourceAdapter().rate_limits(),
+            filter_support=MockSourceAdapter.filter_support,
             build=lambda _context: MockSourceAdapter(),
             requires_network=False,
         ),
@@ -86,6 +88,7 @@ SOURCES: dict[str, SourceDefinition] = {
             # The API only returns a description snippet; we store no more than that.
             storage_policy=StoragePolicy.SNIPPET,
             rate_limit=AdzunaAdapter.RATE_LIMIT,
+            filter_support=AdzunaAdapter.filter_support,
             build=_build_adzuna,
             terms_url="https://developer.adzuna.com/docs/terms_of_service",
             attribution_text="Jobs by Adzuna",

@@ -13,7 +13,9 @@ from app.core.redis import ping_redis
 from app.core.security import PasswordHasher, hash_identifier, tokens_match
 from app.db.session import ping_database
 from app.services.auth_service import AuthContext, AuthService
+from app.services.dispatch import JobDispatcher
 from app.services.readiness import ReadinessCheck
+from app.services.search_job_service import SearchJobService
 
 
 def get_app_settings(request: Request) -> Settings:
@@ -80,3 +82,19 @@ async def get_current_auth_with_csrf(request: Request, auth: CurrentAuth) -> Aut
 
 
 CsrfProtectedAuth = Annotated[AuthContext, Depends(get_current_auth_with_csrf)]
+
+
+def get_dispatcher(request: Request) -> JobDispatcher:
+    dispatcher: JobDispatcher = request.app.state.dispatcher
+    return dispatcher
+
+
+def get_search_job_service(
+    db: DbSessionDep,
+    settings: SettingsDep,
+    dispatcher: Annotated[JobDispatcher, Depends(get_dispatcher)],
+) -> SearchJobService:
+    return SearchJobService(db, settings, dispatcher)
+
+
+SearchJobServiceDep = Annotated[SearchJobService, Depends(get_search_job_service)]

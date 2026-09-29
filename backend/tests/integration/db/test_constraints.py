@@ -167,17 +167,31 @@ async def test_vacancy_rejects_invented_or_inconsistent_data(db_session: AsyncSe
 async def test_idempotency_key_is_unique_per_user(db_session: AsyncSession) -> None:
     user = await make_user(db_session)
     search = await make_search(db_session, user)
-    await make_search_job(db_session, search, idempotency_key="click-1")
+    done = {"status": SearchJobStatus.COMPLETED}  # finished runs: only the key can collide
+    await make_search_job(db_session, search, idempotency_key="click-1", **done)
 
     with pytest.raises(IntegrityError) as error:
         async with db_session.begin_nested():
-            await make_search_job(db_session, search, idempotency_key="click-1")
+            await make_search_job(db_session, search, idempotency_key="click-1", **done)
     assert violated_constraint(error.value) == "uq_search_jobs_user_id_idempotency_key"
 
     other_search = await make_search(db_session, await make_user(db_session))
     await make_search_job(db_session, other_search, idempotency_key="click-1")
-    await make_search_job(db_session, search, idempotency_key=None)
-    await make_search_job(db_session, search, idempotency_key=None)
+    await make_search_job(db_session, search, idempotency_key=None, **done)
+    await make_search_job(db_session, search, idempotency_key=None, **done)
+
+
+async def test_a_search_has_at_most_one_active_run(db_session: AsyncSession) -> None:
+    search = await make_search(db_session, await make_user(db_session))
+    await make_search_job(db_session, search)  # pending
+
+    for status in (SearchJobStatus.PENDING, SearchJobStatus.RUNNING):
+        with pytest.raises(IntegrityError) as error:
+            async with db_session.begin_nested():
+                await make_search_job(db_session, search, status=status)
+        assert violated_constraint(error.value) == "uq_search_jobs_active_search_id"
+
+    await make_search_job(db_session, search, status=SearchJobStatus.FAILED)  # finished is fine
 
 
 async def test_vacancy_can_be_saved_once_per_user(db_session: AsyncSession) -> None:
