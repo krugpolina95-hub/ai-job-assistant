@@ -2,7 +2,7 @@
 
 Web app that turns a natural-language job request into structured search parameters, collects vacancies from reviewed sources, and explains how each one matches the user's profile.
 
-> **Status:** project foundation, database schema, backend foundation and backend authentication (register, login, logout, current user, password change and email reset, rate limits, account lockout and a security event log) the vacancy module (source adapter port, mock source, ingestion with deduplication, list and details API) the first real source adapter (Adzuna, disabled until its compliance review is complete) and asynchronous search runs (inline dispatcher, per-source rate limits, partial failure, retries, filter reporting). n8n orchestration, matching, AI and the frontend pages are not implemented yet.
+> **Status:** project foundation, database schema, backend foundation and backend authentication (register, login, logout, current user, password change and email reset, rate limits, account lockout and a security event log), the user profile (professional data, skills from a curated EN/RU dictionary, snapshot in search runs), the vacancy module (source adapter port, mock source, ingestion with deduplication, list and details API) the first real source adapter (Adzuna, disabled until its compliance review is complete) and asynchronous search runs (inline dispatcher, per-source rate limits, partial failure, retries, filter reporting). n8n orchestration, matching, AI and the frontend pages are not implemented yet.
 
 ## Architecture
 
@@ -95,6 +95,15 @@ uv run python -m app.cli sources run mock --country LT
 ```
 
 Adzuna additionally needs `SOURCES_CONTACT`, `ADZUNA_APP_ID` and `ADZUNA_APP_KEY` (see `backend/.env.example`). The CLI prints JSON on stdout and logs on stderr.
+
+## Skill dictionary
+
+Profile skills must come from the curated dictionary in `backend/app/db/seed/skills.json` (EN/RU aliases). Load it after migrating, and again whenever the file changes (idempotent):
+
+```bash
+cd backend
+uv run python -m app.cli skills sync
+```
 
 ## Configuration
 

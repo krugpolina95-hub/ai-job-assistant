@@ -64,8 +64,8 @@ Account identity. Login sessions live in `user_sessions`.
 | email | citext **NN** | UNIQUE (case-insensitive). ≤ 254 chars. |
 | password_hash | text **NN** | Argon2id hash (TD-04). |
 | is_verified, is_admin | boolean **NN** | Default `false`. |
-| preferred_locale | text **NN** | Default `en`. Not CHECKed, so adding a locale needs no migration (TD-20). |
-| timezone | text **NN** | IANA name, default `UTC`. |
+| preferred_locale | text **NN** | Default `en`. Not CHECKed, so adding a locale needs no migration (TD-20). Set at registration, changed through `PATCH /settings`. |
+| timezone | text **NN** | IANA name, default `UTC`. Set at registration, changed through `PATCH /settings`. |
 | terms_version, privacy_version | text | Versions of the terms/privacy policy accepted at registration (`LEGAL_*_VERSION`, AUTH-002). |
 | terms_accepted_at | timestamptz | |
 | failed_login_count | integer **NN** | Default 0, ≥ 0. Failed logins in a row, counted atomically. Reset by a successful login, by a password reset, and when it reaches `LOGIN_LOCKOUT_THRESHOLD` (the account locks). |
@@ -117,7 +117,7 @@ Single-use password reset links (AUTH-004). Like sessions, only the SHA-256 of t
 A new reset request deletes the user's unused tokens, so only the newest link works. A successful reset deletes the remaining ones.
 
 ### user_profiles
-One per user (`UNIQUE(user_id)`). Professional data only. Sensitive attributes (age, gender, nationality, religion, health, marital status, photo) are deliberately absent (MATCH-004).
+One per user (`UNIQUE(user_id)`), created on the first `PATCH /profile` or the first consent change in `PATCH /settings` (`INSERT … ON CONFLICT DO NOTHING`, so concurrent first saves are safe). Professional data only. Sensitive attributes (age, gender, nationality, religion, health, marital status, photo) are deliberately absent (MATCH-004), and the API rejects them as unknown fields. The row also holds the two consent flags, which only the settings API changes: `DELETE /profile` resets every profile column to empty but keeps them. A row whose profile columns are all empty (created by a consent change, or cleared) reads as an empty profile (`updated_at: null`) and gives search runs no profile snapshot. `updated_at` also moves when a consent changes.
 
 | Column | Type | Notes |
 |---|---|---|
@@ -137,18 +137,18 @@ One per user (`UNIQUE(user_id)`). Professional data only. Sensitive attributes (
 | languages | jsonb **NN** | `[{"code": "en", "level": "C1"}, …]`. |
 | relocation_ready | boolean **NN** | Default `false`. |
 | summary | text | ≤ 5000 chars. Free-text professional summary (stands in for a CV in the MVP). |
-| ai_use_profile | boolean **NN** | Default `true`. Consent to use the profile in AI context (AMB-09). |
-| ai_use_history | boolean **NN** | Default `false`. Consent to use search history in AI context. |
+| ai_use_profile | boolean **NN** | Default `true` (`DEFAULT_AI_USE_PROFILE`, also used when no row exists). Consent to use the profile in AI context (AMB-09). Copied into each search-run snapshot. |
+| ai_use_history | boolean **NN** | Default `false` (`DEFAULT_AI_USE_HISTORY`). Consent to use search history in AI context. |
 | created_at, updated_at | timestamptz **NN** | |
 
 ### skills
-Curated skill dictionary (GAP-14), seeded later.
+Curated skill dictionary (GAP-14). The source of truth is `backend/app/db/seed/skills.json` (~190 skills with EN/RU aliases); `python -m app.cli skills sync` loads it idempotently. Sync adds and renames skills and replaces aliases, but never deletes a skill (`user_skills` restricts it).
 
 | Column | Type | Notes |
 |---|---|---|
 | id | uuid PK | |
 | name | text **NN** | Display name. |
-| normalized_name | text **NN** | UNIQUE. |
+| normalized_name | text **NN** | UNIQUE. `normalize_skill()`: NFKC, case-folded, spaces collapsed, `ё` → `е`; punctuation kept (`c`, `c++`, `c#`).
 | created_at | timestamptz **NN** | |
 
 ### skill_aliases
@@ -252,7 +252,7 @@ One asynchronous run of a search (SEARCH-006). The transition rules live in the 
 | status | text **NN** | `pending \| running \| completed \| partially_completed \| failed \| cancelled`, default `pending`. |
 | idempotency_key | text | **UNIQUE `(user_id, idempotency_key)`** (TD-12). |
 | request_id | text | Correlation ID (TD-21). |
-| context | jsonb **NN** | Snapshot at creation: `{params (SearchParamsV1), params_schema_version}`. The permitted profile subset (architecture §6.3) is added with M4. |
+| context | jsonb **NN** | Snapshot at creation: `{params (SearchParamsV1), params_schema_version, profile}`. `profile` (architecture §6.3) is `null` without a profile, else `{desired_roles, skills [{name, level, years_experience}], experience_level, languages, salary, work_formats, employment_types, relocation_ready, location, ai_use_profile}`: no name or summary. The next run sees profile edits; a running one doesn't. |
 | progress | jsonb **NN** | `{sources_total, sources_done, results_so_far}` (TD-25). |
 | deadline_at | timestamptz **NN** | `created_at + SEARCH_JOB_DEADLINE_SECONDS` (default 120 s). |
 | cancel_requested_at, started_at, finished_at | timestamptz | CHECK `finished_at ≥ started_at`. |

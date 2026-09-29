@@ -18,7 +18,7 @@ from sqlalchemy.orm import joinedload
 
 from app.core.enums import EmploymentType, ExperienceLevel, WorkFormat
 from app.models import SavedVacancy, SearchJob, SearchJobResult, Source, Vacancy
-from app.repositories.base import SharedRepository
+from app.repositories.base import SharedRepository, escape_like
 from app.schemas.vacancy import VacancySort
 
 FUZZY_TITLE_SIMILARITY = 0.85
@@ -231,7 +231,7 @@ def _apply_filters[T: tuple[Any, ...]](statement: Select[T], filters: VacancyFil
     if not filters.include_inactive:
         conditions.append(Vacancy.is_active.is_(True))
     if filters.text:
-        pattern = f"%{_escape_like(filters.text)}%"
+        pattern = f"%{escape_like(filters.text)}%"
         conditions.append(
             or_(
                 Vacancy.title.ilike(pattern, escape="\\"),
@@ -270,7 +270,3 @@ def _after(sort_value: ColumnElement[Any], position: Keyset) -> ColumnElement[bo
         and_(sort_value == position.value, Vacancy.id < position.id),
         sort_value.is_(None),
     )
-
-
-def _escape_like(text: str) -> str:
-    return text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")

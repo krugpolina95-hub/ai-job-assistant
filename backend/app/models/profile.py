@@ -21,6 +21,10 @@ from app.db.types import (
 if TYPE_CHECKING:
     from app.models.user import User
 
+# Consent defaults (AMB-09): the profile may feed the AI assistant, search history may not.
+DEFAULT_AI_USE_PROFILE = True
+DEFAULT_AI_USE_HISTORY = False
+
 
 class UserProfile(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     """Professional profile for AI context and matching. No sensitive attributes (MATCH-004)."""
@@ -56,7 +60,11 @@ class UserProfile(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     languages: Mapped[list[dict[str, Any]]] = mapped_column(server_default=text("'[]'::jsonb"))
     relocation_ready: Mapped[bool] = mapped_column(server_default=text("false"))
     summary: Mapped[str | None] = mapped_column(Text)
-    ai_use_profile: Mapped[bool] = mapped_column(server_default=text("true"))
-    ai_use_history: Mapped[bool] = mapped_column(server_default=text("false"))
+    ai_use_profile: Mapped[bool] = mapped_column(
+        server_default=text(str(DEFAULT_AI_USE_PROFILE).lower())
+    )
+    ai_use_history: Mapped[bool] = mapped_column(
+        server_default=text(str(DEFAULT_AI_USE_HISTORY).lower())
+    )
 
     user: Mapped[User] = relationship(back_populates="profile", lazy="raise")

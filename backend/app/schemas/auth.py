@@ -4,7 +4,15 @@ from datetime import datetime
 from functools import cache
 from typing import Annotated, Literal
 
-from pydantic import ConfigDict, EmailStr, Field, SecretStr, ValidationInfo, field_validator
+from pydantic import (
+    AfterValidator,
+    ConfigDict,
+    EmailStr,
+    Field,
+    SecretStr,
+    ValidationInfo,
+    field_validator,
+)
 
 from app.core.enums import SupportedLocale
 from app.schemas.base import InputSchema, OutputSchema
@@ -28,6 +36,17 @@ def _known_timezones() -> frozenset[str]:
     return frozenset(zoneinfo.available_timezones())
 
 
+def _known_timezone(value: str) -> str:
+    if value not in _known_timezones():
+        raise ValueError("Unknown time zone")
+    return value
+
+
+TimeZoneName = Annotated[
+    str, Field(max_length=64, description="IANA time zone name."), AfterValidator(_known_timezone)
+]
+
+
 class _CredentialsIn(InputSchema):
     # Passwords are used exactly as typed: whitespace is significant, so no global stripping.
     model_config = ConfigDict(str_strip_whitespace=False)
@@ -46,7 +65,7 @@ class RegisterIn(_CredentialsIn):
         description="Consent to the current terms of use and privacy policy (AUTH-002)."
     )
     preferred_locale: SupportedLocale = SupportedLocale.EN
-    timezone: str = Field(default="UTC", max_length=64, description="IANA time zone name.")
+    timezone: TimeZoneName = "UTC"
 
     @field_validator("password")
     @classmethod
@@ -54,13 +73,6 @@ class RegisterIn(_CredentialsIn):
         email = info.data.get("email")
         if email and value.get_secret_value().casefold() == str(email).casefold():
             raise ValueError("Password must not be the email address")
-        return value
-
-    @field_validator("timezone")
-    @classmethod
-    def known_timezone(cls, value: str) -> str:
-        if value not in _known_timezones():
-            raise ValueError("Unknown time zone")
         return value
 
 

@@ -5,6 +5,7 @@ uv run python -m app.cli sources list
 uv run python -m app.cli sources enable adzuna --confirm-compliance-review
 uv run python -m app.cli sources disable adzuna
 uv run python -m app.cli sources run adzuna --country GB --keywords python --days 7
+uv run python -m app.cli skills sync
 """
 
 import argparse
@@ -23,6 +24,7 @@ from app.core.logging import configure_logging
 from app.core.redis import create_redis
 from app.db.session import create_db_engine, create_session_factory
 from app.integrations.sources.rate_limit import RedisSourceRateLimiter
+from app.services.skill_dictionary_service import SkillDictionaryService
 from app.services.source_admin_service import SourceAdminService
 from app.services.source_run_service import SourceRunService
 
@@ -49,10 +51,16 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--keywords", nargs="+", default=[])
     run.add_argument("--city")
     run.add_argument("--days", type=int, dest="published_within_days")
+    skills = groups.add_parser("skills", help="skill dictionary").add_subparsers(
+        dest="command", required=True
+    )
+    skills.add_parser("sync", help="load app/db/seed/skills.json into the database")
     return parser
 
 
 async def execute(args: argparse.Namespace, db: AsyncSession, settings: Settings) -> Any:
+    if args.group == "skills":
+        return dataclasses.asdict(await SkillDictionaryService(db).sync())
     admin = SourceAdminService(db)
     match args.command:
         case "sync":

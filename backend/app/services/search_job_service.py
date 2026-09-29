@@ -45,6 +45,7 @@ from app.schemas.vacancy import VacancyListParams
 from app.services import job_lifecycle
 from app.services.dispatch import JobDispatcher
 from app.services.job_state import is_terminal
+from app.services.profile_service import ProfileService
 from app.services.search_service import SearchService
 from app.services.vacancy_service import VacancyService
 
@@ -100,10 +101,12 @@ class SearchJobService:
                 status=SearchJobStatus.PENDING,
                 idempotency_key=idempotency_key,
                 request_id=structlog.contextvars.get_contextvars().get("request_id"),
-                # Snapshot: later edits of the search don't change a running job (§6.3).
+                # Snapshot: later edits of the search or the profile don't change a running
+                # job, and the next run sees them (§6.3, PROFILE acceptance).
                 context={
                     "params": search.normalized_params,
                     "params_schema_version": search.params_schema_version,
+                    "profile": await ProfileService(self._db).search_snapshot(user_id),
                 },
                 deadline_at=now + timedelta(seconds=self._settings.search_job_deadline_seconds),
                 progress={"sources_total": len(sources), "sources_done": 0, "results_so_far": 0},

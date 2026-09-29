@@ -14,6 +14,12 @@ from app.repositories.base import UserOwnedRepository
 class SearchRepository(UserOwnedRepository[Search]):
     model = Search
 
+    async def exists_for_user(self, user_id: uuid.UUID) -> bool:
+        found = await self.session.scalar(
+            select(select(Search.id).where(Search.user_id == user_id).exists())
+        )
+        return bool(found)
+
 
 class SearchJobRepository(UserOwnedRepository[SearchJob]):
     """Search runs. User-facing reads take `user_id`; the `*_for_runner` methods are used by

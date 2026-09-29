@@ -59,6 +59,14 @@ def normalize_title(title: str) -> str:
     return _fold(title)
 
 
+def normalize_skill(name: str) -> str:
+    """Dictionary key of a skill name or alias (GAP-14): case- and spacing-insensitive, but
+    punctuation is kept, because it tells skills apart ("C", "C++", "C#", ".NET")."""
+    folded = collapse_whitespace(unicodedata.normalize("NFKC", name)).casefold()
+    # Russian YO (U+0451) is commonly written as IE (U+0435).
+    return folded.replace(chr(0x0451), chr(0x0435))
+
+
 def normalize_company(company: str | None) -> str | None:
     if not company:
         return None

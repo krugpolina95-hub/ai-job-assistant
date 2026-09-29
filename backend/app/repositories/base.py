@@ -54,3 +54,8 @@ class UserOwnedRepository[ModelT](Repository[ModelT]):
         )
         deleted_id = await self.session.scalar(statement)
         return deleted_id is not None
+
+
+def escape_like(text: str) -> str:
+    """Makes user input match literally in LIKE/ILIKE (use with `escape="\\"`)."""
+    return text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")

@@ -27,7 +27,9 @@ Protected routes use the `CurrentAuth` dependency; unsafe ones use `CsrfProtecte
 
 ## Request handling
 
-- Request bodies are capped at 64 KB (`413`). Unknown JSON fields are rejected.
+- Request bodies are capped at 64 KB (`413`). Unknown JSON fields are rejected, which also keeps sensitive attributes (age, gender, nationality, religion, health, marital status, photo) out of profiles.
+- Profile and settings routes act only on the caller's own rows (`user_id` from the session, never from the request; a `user_id` in the body is rejected as an unknown field), so no request can read or change another user's profile, skills, settings or consents.
+- Consents (`ai_use_profile`, `ai_use_history`, PROFILE-003) can be changed only through `PATCH /settings`, never as a side effect of a profile update or deletion. Each change is logged (`settings_updated`, field names and boolean values only). The AI context builder (M7) must read the consent from the search snapshot or the settings; nothing uses the AI yet.
 - Error responses never echo submitted values, and unexpected errors return a generic `500` (details are only in logs).
 - Security headers on every response: `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer`, `Cache-Control: no-store`.
 

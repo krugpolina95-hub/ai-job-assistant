@@ -62,6 +62,40 @@ class SkillLevel(StrEnum):
     EXPERT = "expert"
 
 
+class LanguageLevel(StrEnum):
+    """CEFR levels plus native (PROFILE-001 languages)."""
+
+    A1 = "A1"
+    A2 = "A2"
+    B1 = "B1"
+    B2 = "B2"
+    C1 = "C1"
+    C2 = "C2"
+    NATIVE = "native"
+
+
+class PersonalizationData(StrEnum):
+    """What the app knows about a user that can personalize results (PROFILE-004)."""
+
+    DISPLAY_NAME = "display_name"
+    SUMMARY = "summary"
+    DESIRED_ROLES = "desired_roles"
+    SKILLS = "skills"
+    EXPERIENCE_LEVEL = "experience_level"
+    LANGUAGES = "languages"
+    SALARY = "salary"
+    WORK_FORMATS = "work_formats"
+    EMPLOYMENT_TYPES = "employment_types"
+    RELOCATION_READY = "relocation_ready"
+    LOCATION = "location"
+    SEARCH_HISTORY = "search_history"
+
+
+class PersonalizationPurpose(StrEnum):
+    MATCHING = "matching"  # deterministic match levels (TD-11); no AI involved
+    AI_ASSISTANT = "ai_assistant"  # context for the AI query assistant (PROFILE-003)
+
+
 class LocationSource(StrEnum):
     MANUAL = "manual"
     IP = "ip"

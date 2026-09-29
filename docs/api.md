@@ -155,6 +155,39 @@ A user sees only vacancies **visible to them**: those in results of their own se
 
 **`VacancyDetailOut`** adds `description` (only when the source's storage policy allows full text, TD-23), `requirements`, `responsibilities`, `skills`, `language`, `salary_raw`, `location_raw`, `removed_at`.
 
+### Profile
+
+The signed-in user's professional profile (PROFILE-001..002) and skills. Every route works only on the caller's own data; there is no way to address another user's profile.
+
+| Method | Path | Auth | Request | Success |
+|---|---|---|---|---|
+| GET | `/api/v1/profile` | session | none | `200 ProfileOut`. Empty (`updated_at: null`) while it holds no profile data (never saved, or cleared). |
+| PATCH | `/api/v1/profile` | session + CSRF | `ProfileUpdate` (any subset of fields) | `200 ProfileOut`. Fields left out stay; `null` clears a nullable field; lists and `salary` are replaced as a whole. |
+| DELETE | `/api/v1/profile` | session + CSRF | none | `204`. Clears all profile fields and skills. The account and consent settings stay. Repeating is harmless. |
+| GET | `/api/v1/profile/skills` | session | none | `200 {items: UserSkillOut[]}`, sorted by name. |
+| PUT | `/api/v1/profile/skills` | session + CSRF | `{skills: [{name, level?, years_experience?}]}` (≤ 100) | `200 {items}`: exactly this list. `[]` removes all. |
+| GET | `/api/v1/skills?q=&limit=10` | session | `q` 1–50 chars, `limit` 1–20 | `200 {items: [{id, name}]}`: dictionary skills whose name or alias (EN/RU) starts with `q`, exact matches first. For autocomplete. |
+
+**`ProfileUpdate` / `ProfileOut`:** `display_name` (≤ 100), `desired_roles[]` (≤ 10, 1–100 chars each, duplicates ignored case-insensitively), `location {country (ISO 3166-1 alpha-2), region, city}` (≥ 1 field; output adds `source`, `manual` when typed by the user), `salary` (same shape and rules as the search `salary`: `{min?, max?, currency, period=month}`, min ≤ max, ≥ 0, ISO 4217), `work_formats[]`, `employment_types[]`, `experience_level`, `languages [{code (ISO 639-1), level (A1–C2 or native)}]` (each code once, ≤ 20), `relocation_ready`, `summary` (≤ 5000). Output adds `updated_at`. Unknown fields, including sensitive attributes (age, gender, nationality, religion, health, marital status, photo) and settings (`preferred_locale`, `timezone`, `ai_use_*`, see [Settings](#settings)), are rejected with `422`.
+
+**Skills:** `name` is a dictionary skill or alias in any case (`питон`, `k8s`, `Project Management`); `level` is `beginner | intermediate | advanced | expert`; `years_experience` 0–70 with one decimal. Unknown or repeated skills reject the whole request with `422 VALIDATION_ERROR`, one `details` entry per bad row: `{loc: ["body", "skills", <index>, "name"], type: "unknown_skill" | "duplicate_skill", message}`.
+
+**In searches:** each new search run stores a snapshot of the profile and skills in its context (see `docs/database.md`, `search_jobs.context`), so the next search uses the current profile and later edits never change a running one.
+
+### Settings
+
+The signed-in user's settings and consents (M4.3, PROFILE-003/004, AMB-09). Separate from the profile: `PATCH /profile` can't change them, and `DELETE /profile` keeps them. Only the caller's own settings; a `user_id` (or any other unknown field) in the body is `422`.
+
+| Method | Path | Auth | Request | Success |
+|---|---|---|---|---|
+| GET | `/api/v1/settings` | session | none | `200 SettingsOut`. |
+| PATCH | `/api/v1/settings` | session + CSRF | `SettingsUpdate` (any subset) | `200 SettingsOut`. Fields left out stay; `null` is `422` (none is nullable); `{}` changes nothing. |
+| GET | `/api/v1/settings/personalization` | session | none | `200 PersonalizationOut`: what data is held and where it is used (PROFILE-004). |
+
+**`SettingsOut` / `SettingsUpdate`:** `preferred_locale` (`en` or `ru`) and `timezone` (IANA name): the same values registration sets and `/auth/me` returns, under the same names; `ai_use_profile` (default `true`): the AI assistant may use the profile; `ai_use_history` (default `false`): the AI assistant may use past searches.
+
+**`PersonalizationOut`:** `{ai_use_profile, ai_use_history, items: [{data, has_value, used_for[]}]}` with one item per kind of data: `display_name`, `summary`, `desired_roles`, `skills`, `experience_level`, `languages`, `salary`, `work_formats`, `employment_types`, `relocation_ready`, `location`, `search_history`. `has_value` says whether the app holds it now. `used_for` lists codes the UI translates: `matching` (deterministic match levels, always for the profile data a search snapshots; clearing the profile stops it) and `ai_assistant` (the profile data only with `ai_use_profile`, `search_history` only with `ai_use_history`). Name and summary are stored but never used (`[]`).
+
 ### Searches and search runs
 
 | Method | Path | Auth | Success |
