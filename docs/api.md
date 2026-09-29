@@ -71,7 +71,9 @@ Defined in `backend/app/core/errors.py`. New codes are added with the feature th
 | `JOB_LIMIT_REACHED` | 409 | The user already has the maximum number of active runs. |
 | `IDEMPOTENCY_KEY_REUSED` | 409 | An `Idempotency-Key` already used for a different search. |
 | `JOB_ALREADY_FINISHED` | 409 | Cancelling a run that already completed or failed. |
-| `RATE_LIMITED` | 429 | A request limit was hit: too many search runs in the last hour, or too many auth attempts (see [Auth](#auth)). `details.limit` names the limit. Auth limits also send `Retry-After` (seconds). |
+| `RATE_LIMITED` | 429 | A request limit was hit: too many search runs in the last hour, too many auth attempts (see [Auth](#auth)), or the AI quota (`ai_calls_per_day`: 50 per rolling 24 h, `ai_calls_per_minute`: 10). `details.limit` names the limit. Auth and per-minute AI limits also send `Retry-After` (seconds). |
+| `AI_UNAVAILABLE` | 503 | The AI assistant can't answer: no provider configured, provider down or rate-limited, timed out, or paused after repeated failures. The UI falls back to the search form (architecture §9). No AI endpoint exists yet (M7.5). |
+| `AI_INVALID_RESPONSE` | 502 | The AI answered twice without matching the expected structure (AI-007). The UI falls back to the form. |
 | `PAYLOAD_TOO_LARGE` | 413 | The body exceeds 64 KB (declared `Content-Length` or streamed). |
 | `INTERNAL_ERROR` | 500 | Any unexpected exception. The message is always generic, and details are only in the logs under the same `request_id`. |
 

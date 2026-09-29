@@ -335,7 +335,7 @@ Deterministic match result per job and vacancy (TD-11). **UNIQUE `(search_job_id
 | created_at | timestamptz **NN** | |
 
 ### ai_interactions
-Metadata of AI calls for cost, quota and quality tracking. **Prompt and response content is not stored** (SRS §7.12, CLAUDE.md §7).
+Metadata of AI calls for cost, quota and quality tracking. **Prompt and response content is not stored** (SRS §7.12, CLAUDE.md §7). Written only by `AIService`, one row per call that reached the provider (retries and the repair turn included: tokens are summed); calls stopped by a quota, an open circuit or a missing provider leave no row. The rows of the last 24 h are the daily quota. `error_code` is an `AIErrorReason` (`provider_unavailable`, `provider_timeout`, `provider_rate_limited`, `provider_rejected`, `invalid_response`); `model` is `unknown` when the provider never answered. `cost_estimate_usd` stays empty until a provider with a price list is configured.
 
 | Column | Type | Notes |
 |---|---|---|

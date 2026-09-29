@@ -46,6 +46,18 @@ Protected routes use the `CurrentAuth` dependency; unsafe ones use `CsrfProtecte
 | Source rate limits | Every outbound request takes a token from the source's Redis bucket (Adzuna 25/min) and its daily quota (Adzuna 250/day), atomically across processes. Short waits are bounded by `SOURCE_RATE_LIMIT_MAX_WAIT_SECONDS` and the run deadline; a spent quota fails the source without a request; if Redis is unreachable the source fails closed (`SOURCE_RATE_LIMITER_UNAVAILABLE`). |
 | User run limits | Separate from source limits: at most `SEARCH_MAX_ACTIVE_JOBS_PER_USER` active runs (enforced under a per-user row lock) and `SEARCH_MAX_RUNS_PER_HOUR` runs per hour; one active run per search (unique index); `Idempotency-Key` replays return the same run. |
 
+## AI calls (TD-07, M7.1 foundation)
+
+No AI provider is configured yet and no endpoint calls the AI; the controls below apply to every future AI feature because they sit in the one entry point, `AIService`.
+
+| Control | Implementation |
+|---|---|
+| Keys | Only the backend will call a provider; no key exists yet. When one is added it comes from backend env vars only. |
+| No raw replies | Providers return raw data only to `AIClient`, which returns a validated Pydantic model or fails. Raw replies are never returned, logged, stored or put into error messages; the repair turn lists schema problems without repeating the reply (untrusted text, prompt injection). |
+| Validation (AI-007) | Every reply is validated against the caller's Pydantic model; one repair attempt; then `502 AI_INVALID_RESPONSE`. |
+| Bounded time and cost | 20 s timeout per call (`AI_TIMEOUT_SECONDS`), one retry on 429/5xx with jitter, none on timeouts; a circuit breaker pauses calls after 5 provider failures in a row for 60 s; per-user quotas of 10 calls/min (Redis) and 50 per 24 h (counted in `ai_interactions`). |
+| Privacy | `ai_interactions` stores metadata only (task, model, tokens, latency, outcome), never prompt or reply text. |
+
 ## Logging and secrets
 
 - Logs are JSON. User IDs are logged only as a keyed hash (`LOG_HASH_SECRET`, HMAC-SHA256). Emails, passwords, tokens and cookies are never logged, and keys like `password`, `token`, `email`, `cookie` are masked by a last-resort redaction processor.

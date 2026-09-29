@@ -344,6 +344,7 @@ ai_interactions log (tokens, latency, status, prompt_version; no content by defa
 - **Confirm:** no LLM call. It validates the final params with `SearchParamsV1` and creates the `search` (status `confirmed`).
 - **Explain:** see TD-11. The input contains only computed factors. Output ≤ 600 chars, in the locale.
 - **Fallbacks:** on `AI_UNAVAILABLE` or `AI_INVALID_RESPONSE`, the UI keeps the text and opens the form with any fields that were parsed deterministically (a simple keyword/role extractor using the skill and role dictionaries).
+- **Implemented (M7.1 foundation, no provider yet):** `app/integrations/ai/base.py` (`LLMProvider` port, `ModelTier`, typed provider errors), `app/integrations/ai/client.py` (`AIClient`: timeout, one retry with jitter on 429/5xx or a `Retry-After` ≤ 5 s, never on timeouts so a user waits at most one timeout; schema validation with one repair turn that lists problems but never echoes the reply; a per-process circuit breaker that counts provider failures, not invalid replies), `app/services/ai_service.py` (`AIService.generate`: quotas, `ai_interactions` record, `AI_UNAVAILABLE`/`AI_INVALID_RESPONSE`). Feature services (parse, clarify, explain) call only `AIService`. Tests use `tests/fakes.py:FakeLLMProvider`; no real provider is called.
 
 ---
 

@@ -105,6 +105,16 @@ class Settings(BaseSettings):
     search_max_runs_per_hour: int = Field(default=20, ge=1, le=1000)
     search_max_results_per_job: int = Field(default=200, ge=1, le=1000)
 
+    # AI calls (TD-07). No provider is wired yet (product-owner decision); these bound any
+    # provider: per-call timeout, retries on 429/5xx, circuit breaker, per-user quotas.
+    ai_timeout_seconds: float = Field(default=20.0, gt=0, le=120)
+    ai_max_retries: int = Field(default=1, ge=0, le=3)
+    ai_retry_delay_seconds: float = Field(default=1.0, ge=0, le=10)
+    ai_circuit_failure_threshold: int = Field(default=5, ge=1, le=100)
+    ai_circuit_open_seconds: float = Field(default=60.0, gt=0, le=3600)
+    ai_max_calls_per_minute: int = Field(default=10, ge=1, le=1000)
+    ai_max_calls_per_day: int = Field(default=50, ge=1, le=10_000)
+
     # Versions of the legal documents a user accepts at registration (AUTH-002, GAP-05).
     legal_terms_version: str = Field(min_length=1, max_length=64)
     legal_privacy_version: str = Field(min_length=1, max_length=64)

@@ -32,6 +32,8 @@ class ErrorCode(StrEnum):
     RATE_LIMITED = "RATE_LIMITED"
     IDEMPOTENCY_KEY_REUSED = "IDEMPOTENCY_KEY_REUSED"
     JOB_ALREADY_FINISHED = "JOB_ALREADY_FINISHED"
+    AI_UNAVAILABLE = "AI_UNAVAILABLE"
+    AI_INVALID_RESPONSE = "AI_INVALID_RESPONSE"
     PAYLOAD_TOO_LARGE = "PAYLOAD_TOO_LARGE"
     INTERNAL_ERROR = "INTERNAL_ERROR"
 
@@ -179,3 +181,20 @@ class JobAlreadyFinishedError(AppError):
     code = ErrorCode.JOB_ALREADY_FINISHED
     status_code = HTTPStatus.CONFLICT
     default_message = "The search run has already finished"
+
+
+class AIUnavailableError(AppError):
+    """The AI can't answer right now (not configured, provider down, timed out, rate-limited,
+    circuit open). The UI falls back to the form (architecture §9)."""
+
+    code = ErrorCode.AI_UNAVAILABLE
+    status_code = HTTPStatus.SERVICE_UNAVAILABLE
+    default_message = "The AI assistant is unavailable; use the search form"
+
+
+class AIInvalidResponseError(AppError):
+    """The AI answered twice without matching the expected structure (AI-007)."""
+
+    code = ErrorCode.AI_INVALID_RESPONSE
+    status_code = HTTPStatus.BAD_GATEWAY
+    default_message = "The AI assistant gave an unusable answer; use the search form"
