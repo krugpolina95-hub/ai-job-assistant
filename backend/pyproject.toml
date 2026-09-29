@@ -41,6 +41,8 @@ select = ["E", "W", "F", "I", "UP", "B", "SIM", "ASYNC", "S", "RUF"]
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["S101", "S105", "S106"]
+# Localized email text: Cyrillic letters are intended, not look-alikes.
+"app/integrations/email/templates.py" = ["RUF001"]
 
 [tool.ruff.lint.isort]
 known-third-party = ["alembic"]

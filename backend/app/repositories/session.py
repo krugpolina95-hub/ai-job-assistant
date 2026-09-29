@@ -28,3 +28,7 @@ class UserSessionRepository(UserOwnedRepository[UserSession]):
         await self.session.execute(
             delete(UserSession).where(UserSession.user_id == user_id, UserSession.expires_at <= now)
         )
+
+    async def delete_all_for_user(self, user_id: uuid.UUID) -> None:
+        """Signs the user out everywhere (password change or reset, TD-03)."""
+        await self.session.execute(delete(UserSession).where(UserSession.user_id == user_id))

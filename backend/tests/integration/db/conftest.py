@@ -22,6 +22,7 @@ import app.models  # noqa: F401  (all tables on Base.metadata)
 from app.core.config import Settings
 from app.db.base import Base
 from app.main import create_app
+from tests.fakes import install_test_doubles
 from tests.settings import DatabaseTestSettings
 
 BACKEND_DIR = Path(__file__).resolve().parents[3]
@@ -102,6 +103,7 @@ def api_app(settings: Settings, db_connection: AsyncConnection) -> FastAPI:
         expire_on_commit=False,
         autoflush=False,
     )
+    install_test_doubles(app)
     return app
 
 

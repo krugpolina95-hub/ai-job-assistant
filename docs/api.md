@@ -25,7 +25,7 @@ Opaque server-side sessions in cookies (TD-03). No token is ever readable by Jav
 | `csrf` | `Secure; SameSite=Lax; Path=/` (readable by JS) | Double-submit CSRF token. |
 
 - **CSRF:** every `POST`/`PUT`/`PATCH`/`DELETE` on a protected route must send the `csrf` cookie value in the `X-CSRF-Token` header, otherwise `403 CSRF_FAILED`. Authentication is checked first, so a request without a session gets `401`. Register and login take no session; they only accept JSON bodies, so a cross-site HTML form can't submit them.
-- **Token rotation:** every login issues a new token and deletes the session the browser had before (session fixation).
+- **Token rotation:** every login issues a new token and deletes the session the browser had before (session fixation). A password change replaces every session of the user, this browser's included, with one new session; a password reset deletes them all.
 - **Frontend flow:** call `GET /auth/me` to learn whether the user is signed in (401 means no). It also re-issues a missing `csrf` cookie.
 
 ## Error envelope
@@ -57,7 +57,9 @@ Defined in `backend/app/core/errors.py`. New codes are added with the feature th
 | `BAD_REQUEST` | 400 | Malformed request the framework can't interpret, e.g. an invalid `Content-Length`. |
 | `VALIDATION_ERROR` | 422 | The request body, query or path fails schema validation, or a service rejects input with `ValidationFailedError`. |
 | `UNAUTHENTICATED` | 401 | No valid session: cookie missing, unknown, expired or logged out. The reason is not disclosed. |
-| `INVALID_CREDENTIALS` | 401 | Login failed. Identical for an unknown email and a wrong password. |
+| `INVALID_CREDENTIALS` | 401 | Login failed. Identical for an unknown email, a wrong password and a locked account. |
+| `INVALID_CURRENT_PASSWORD` | 400 | Password change with a wrong current password (the session stays valid, so not 401). |
+| `RESET_TOKEN_INVALID` | 400 | Password reset with an unknown, expired or already used link. The three cases are not distinguished. |
 | `CSRF_FAILED` | 403 | Unsafe request on a session without a matching `X-CSRF-Token` header. |
 | `NOT_FOUND` | 404 | Unknown route, missing resource, or a resource owned by another user (`NotFoundError`). |
 | `METHOD_NOT_ALLOWED` | 405 | The route exists but not for this method. The `Allow` header lists valid methods. |
@@ -69,7 +71,7 @@ Defined in `backend/app/core/errors.py`. New codes are added with the feature th
 | `JOB_LIMIT_REACHED` | 409 | The user already has the maximum number of active runs. |
 | `IDEMPOTENCY_KEY_REUSED` | 409 | An `Idempotency-Key` already used for a different search. |
 | `JOB_ALREADY_FINISHED` | 409 | Cancelling a run that already completed or failed. |
-| `RATE_LIMITED` | 429 | Too many search runs in the last hour. |
+| `RATE_LIMITED` | 429 | A request limit was hit: too many search runs in the last hour, or too many auth attempts (see [Auth](#auth)). `details.limit` names the limit. Auth limits also send `Retry-After` (seconds). |
 | `PAYLOAD_TOO_LARGE` | 413 | The body exceeds 64 KB (declared `Content-Length` or streamed). |
 | `INTERNAL_ERROR` | 500 | Any unexpected exception. The message is always generic, and details are only in the logs under the same `request_id`. |
 
@@ -92,12 +94,33 @@ Defined in `backend/app/core/errors.py`. New codes are added with the feature th
 | POST | `/api/v1/auth/login` | none | `{email, password, remember_me?: false}` | `200 UserOut`; sets a new `sid` + `csrf`. |
 | POST | `/api/v1/auth/logout` | session + CSRF | none | `204`; deletes this session only and clears both cookies. |
 | GET | `/api/v1/auth/me` | session | none | `200 UserOut`. |
+| POST | `/api/v1/auth/change-password` | session + CSRF | `{current_password, new_password}` | `204`; sets a new `sid` + `csrf` (same persistence as before). Every other session of the user ends. |
+| POST | `/api/v1/auth/forgot-password` | none | `{email}` | `202`, empty body, **always**: whether or not the email has an account. If it has, a reset link valid for 30 minutes is emailed in the account's language. |
+| POST | `/api/v1/auth/reset-password` | none | `{token, new_password}` | `204`; sets the password, ends every session (cookies cleared) and lifts a login lockout. The user then logs in. |
 
 `UserOut`: `{id, email, is_verified, preferred_locale, timezone, created_at}`. It never contains the password hash, session data or admin flags.
 
 Validation (`422 VALIDATION_ERROR`): email must be valid and ≤ 254 characters; password 10–128 characters (used exactly as typed, including spaces) and not equal to the email; `accept_terms` must be `true`, and the accepted terms/privacy versions are stored with the account; unknown fields are rejected.
 
-Errors: register → `409 EMAIL_ALREADY_REGISTERED`; login → `401 INVALID_CREDENTIALS`; protected routes → `401 UNAUTHENTICATED`, and unsafe ones also `403 CSRF_FAILED`.
+Validation of the new endpoints: `new_password` follows the registration rules (10–128 characters, not the account's email); `token` is the value from the link (URL-safe characters, 20–128).
+
+Errors: register → `409 EMAIL_ALREADY_REGISTERED`; login → `401 INVALID_CREDENTIALS`; change-password → `400 INVALID_CURRENT_PASSWORD`; reset-password → `400 RESET_TOKEN_INVALID`; protected routes → `401 UNAUTHENTICATED`, and unsafe ones also `403 CSRF_FAILED`; any auth route → `429 RATE_LIMITED`.
+
+**Reset link.** `{APP_PUBLIC_URL}/{locale}/reset-password#token=<token>`. The token is in the URL fragment, which browsers never send to a server or in `Referer`; the reset page reads it and posts it to `/auth/reset-password`. Only the newest link of an account works, and only once.
+
+**Brute-force protection (AUTH-006).** Limits per client IP (behind the proxies, see `TRUSTED_PROXY_COUNT`), email or user, over a sliding window:
+
+| `details.limit` | Limit | What counts |
+|---|---|---|
+| `login_per_ip_and_email` | 5 per minute | Failed logins for one email from one IP. |
+| `login_per_ip` | 20 per hour | Failed logins from one IP, any email. |
+| `register_per_ip` | 5 per hour | Registrations from one IP. |
+| `password_reset_request_per_ip` | 5 per hour | Reset requests from one IP. |
+| `password_reset_request_per_email` | 3 per hour | Reset requests for one email, from anywhere (no mailbox flooding). |
+| `password_reset_per_ip` | 10 per hour | Reset attempts (token submissions) from one IP. |
+| `password_change_per_user` | 5 per 15 minutes | Password change attempts of one user. |
+
+Successful logins don't count. While a login limit is exhausted even the right password gets `429`. Separately, `LOGIN_LOCKOUT_THRESHOLD` (10) failed logins in a row lock the account for `LOGIN_LOCKOUT_DURATION` (15 min): during the lock every login answers the usual `401 INVALID_CREDENTIALS`, so a lock reveals nothing, and a password reset lifts it. A successful login resets the count.
 
 ### Vacancies
 

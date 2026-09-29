@@ -67,7 +67,7 @@
 - On login, generate 256-bit random token → store `sha256(token)` in `user_sessions` with `expires_at` (idle 7 days, absolute 30 days; "remember me" off = browser-session cookie + 12 h absolute).
 - Cookie `sid`: `HttpOnly; Secure; SameSite=Lax; Path=/`.
 - **CSRF:** double-submit token. A non-HttpOnly `csrf` cookie plus an `X-CSRF-Token` header is required on POST/PUT/PATCH/DELETE. Together with SameSite=Lax this covers CSRF.
-- Password change or reset → delete all other sessions. Logout → delete the current session.
+- Password change → delete all sessions and issue one new session to the browser that made the change (a copied cookie stops working too). Password reset → delete all sessions. Logout → delete the current session.
 - Sliding expiry is updated at most once every 5 minutes to limit write load.
 **Alternatives.** JWT access + refresh tokens: revocation is harder and there's more code. Offers little benefit at MVP scale. Third-party auth (Auth0, Clerk): adds a vendor and cost, and the SRS asks for our own email/password flow.
 **Consequences.** Each authenticated request does one indexed DB lookup (optionally cached in Redis for 60 s). Easy to revoke. No token lives in JS.

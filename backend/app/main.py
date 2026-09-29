@@ -13,9 +13,12 @@ from app.api.middleware import (
 from app.api.router import API_V1_PREFIX, api_v1_router
 from app.core.config import Settings, get_settings
 from app.core.logging import configure_logging
+from app.core.rate_limit import RedisRateLimiter
 from app.core.redis import create_redis
 from app.core.security import PasswordHasher
 from app.db.session import create_db_engine, create_session_factory
+from app.integrations.email.background import BackgroundEmailSender
+from app.integrations.email.smtp import SmtpEmailSender
 from app.integrations.sources.rate_limit import RedisSourceRateLimiter
 from app.services.dispatch import InlineDispatcher
 from app.services.job_runner import SearchJobRunner
@@ -29,6 +32,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.db_engine = create_db_engine(settings)
     app.state.db_session_factory = create_session_factory(app.state.db_engine)
     app.state.redis = create_redis(settings)
+    app.state.auth_rate_limiter = RedisRateLimiter(
+        app.state.redis, key_secret=settings.log_hash_secret.get_secret_value()
+    )
+    email_sender = BackgroundEmailSender(SmtpEmailSender(settings))
+    app.state.email_sender = email_sender
     dispatcher = InlineDispatcher(
         SearchJobRunner(
             app.state.db_session_factory, settings, RedisSourceRateLimiter(app.state.redis)
@@ -40,6 +48,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         yield
     finally:
         await dispatcher.drain()
+        await email_sender.drain()
         await app.state.redis.aclose()
         await app.state.db_engine.dispose()
         logger.info("app_stopped")

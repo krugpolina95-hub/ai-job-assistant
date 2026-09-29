@@ -35,6 +35,7 @@ from app.services.dispatch import InlineDispatcher
 from app.services.job_runner import SearchJobRunner
 from app.services.source_admin_service import SourceAdminService
 from tests.conftest import build_test_settings
+from tests.fakes import install_test_doubles
 from tests.integration.db.search_helpers import (
     RecordingDispatcher,
     ScriptedLimiter,
@@ -113,6 +114,7 @@ async def harness(committed_sessions: async_sessionmaker[AsyncSession]) -> Async
     app = create_app(SETTINGS)
     app.state.db_session_factory = committed_sessions
     app.state.dispatcher = dispatcher
+    install_test_doubles(app)
     async with AsyncClient(transport=ASGITransport(app=app), base_url="https://testserver") as c:
         await sign_in(c)
         yield Harness(app, c, committed_sessions, limiter, runner, dispatcher)

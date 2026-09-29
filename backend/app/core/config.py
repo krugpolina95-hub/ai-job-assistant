@@ -3,7 +3,15 @@ from enum import StrEnum
 from functools import lru_cache
 from typing import Literal, Self
 
-from pydantic import Field, PostgresDsn, RedisDsn, SecretStr, field_validator, model_validator
+from pydantic import (
+    Field,
+    HttpUrl,
+    PostgresDsn,
+    RedisDsn,
+    SecretStr,
+    field_validator,
+    model_validator,
+)
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from app.core.logging import LogFormat
@@ -48,6 +56,31 @@ class Settings(BaseSettings):
     password_hash_memory_kib: int = Field(default=19 * 1024, ge=8)
     password_hash_parallelism: int = Field(default=1, ge=1)
 
+    # Brute-force protection (AUTH-006, architecture §4.4): this many failed logins in a row lock
+    # the account for LOGIN_LOCKOUT_DURATION. Per-IP request limits are separate.
+    login_lockout_threshold: int = Field(default=10, ge=3, le=100)
+    login_lockout_duration: timedelta = timedelta(minutes=15)
+    # Lifetime of the single-use link in a password reset email (AUTH-004).
+    password_reset_token_ttl: timedelta = timedelta(minutes=30)
+
+    # Client IP for rate limits and auth events (TD-05): how many proxies in front of the backend
+    # append to X-Forwarded-For. Compose: 1 (Caddy; the Next.js rewrite keeps the header as is).
+    # 0 = the TCP peer is the client (the backend is called directly).
+    trusted_proxy_count: int = Field(default=0, ge=0, le=5)
+
+    # Public origin of the web app, for links in emails, e.g. https://app.example.com.
+    app_public_url: HttpUrl = HttpUrl("http://localhost")
+    # Outgoing email over SMTP (TD-27). The defaults match Mailpit on the host.
+    smtp_host: str = Field(default="localhost", min_length=1, max_length=255)
+    smtp_port: int = Field(default=1025, ge=1, le=65535)
+    smtp_security: Literal["none", "starttls", "tls"] = "none"
+    smtp_username: str | None = Field(default=None, min_length=1, max_length=255)
+    smtp_password: SecretStr | None = Field(default=None, min_length=1, max_length=255)
+    smtp_timeout_seconds: float = Field(default=10.0, gt=0, le=60)
+    email_from: str = Field(
+        default="AI Job Assistant <no-reply@localhost>", min_length=3, max_length=200
+    )
+
     # Outbound calls to job sources (SOURCE-003: honest identity, bounded time).
     # Contact shown in our User-Agent, e.g. an email or URL. Required before any real source runs.
     sources_contact: str | None = Field(default=None, min_length=3, max_length=200)
@@ -90,6 +123,22 @@ class Settings(BaseSettings):
         ):
             raise ValueError("SESSION_COOKIE_SECURE must be true in staging and production")
         return self
+
+    @model_validator(mode="after")
+    def require_real_email_settings_when_deployed(self) -> Self:
+        if self.app_env not in (Environment.STAGING, Environment.PRODUCTION):
+            return self
+        if self.app_public_url.scheme != "https":
+            raise ValueError("APP_PUBLIC_URL must be an https URL in staging and production")
+        if self.smtp_security == "none":
+            raise ValueError("SMTP_SECURITY must be starttls or tls in staging and production")
+        if "localhost" in (self.smtp_host, self.email_from.rsplit("@", 1)[-1].rstrip(">")):
+            raise ValueError("Set SMTP_HOST and EMAIL_FROM for staging and production")
+        return self
+
+    @property
+    def public_origin(self) -> str:
+        return str(self.app_public_url).rstrip("/")
 
     @property
     def expose_api_docs(self) -> bool:

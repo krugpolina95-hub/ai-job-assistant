@@ -109,13 +109,15 @@ backend/
 ```
 
 ### 4.3 Cross-cutting middleware (in order)
-Security headers → request ID + structured access log (+ last-resort 500 envelope) → body size limit (64 KB) → rate limiter (Redis, per route group) → router → exception handlers (map to the error envelope). Security headers are outermost so every response gets them, including 413 and 500. These are pure ASGI middlewares in `app/api/middleware.py`. Session loading and the CSRF check are FastAPI dependencies (`CurrentAuth`, `CsrfProtectedAuth` in `app/api/deps.py`) rather than middleware: routes declare what they need, and `tests/authz/` fails if a non-public route lacks authentication or an unsafe one lacks the CSRF check.
+Security headers → request ID + structured access log (+ last-resort 500 envelope) → body size limit (64 KB) → router → exception handlers (map to the error envelope). Security headers are outermost so every response gets them, including 413 and 500. These are pure ASGI middlewares in `app/api/middleware.py`. Rate limits are not a middleware: they need the parsed request (e.g. the email of a login) and the outcome (only failed logins count), so services apply them through `app/core/rate_limit.py` (auth: `app/services/auth_guard.py`). Session loading and the CSRF check are FastAPI dependencies (`CurrentAuth`, `CsrfProtectedAuth` in `app/api/deps.py`) rather than middleware: routes declare what they need, and `tests/authz/` fails if a non-public route lacks authentication or an unsafe one lacks the CSRF check.
 
 ### 4.4 Rate limit groups (initial)
 | Group | Limit |
 |---|---|
-| `auth:login` | 5/min per IP+email, 20/hour per IP. Backoff lockout 15 min after 10 failures on an account. |
-| `auth:register`, `auth:forgot` | 5/hour per IP |
+| `auth:login` | Failed logins: 5/min per IP+email, 20/hour per IP. Lockout 15 min after 10 failures in a row on an account (database, not Redis). |
+| `auth:register`, `auth:forgot` | 5/hour per IP; forgot also 3/hour per email |
+| `auth:reset` | 10/hour per IP |
+| `auth:change-password` | 5 per 15 min per user |
 | `ai:*` | 10/min, 50/day per user (TD-07) |
 | `search:run` | 20/hour per user + 2 active jobs (TD-12) |
 | default authenticated | 120/min per user |
@@ -270,7 +272,7 @@ erDiagram
 | saved_vacancies | id, user_id, vacancy_id, note, created_at, **updated_at** | UNIQUE(user_id, vacancy_id) |
 | search_history_events | as SRS | idx(user_id, created_at) |
 | ai_interactions | SRS fields + **task, prompt_version, request_id, error_code, cost_estimate_usd** | idx(user_id, created_at) |
-| **auth_events** | id, user_id nullable, email_hash, event (login_ok/login_fail/locked/pw_change/pw_reset/logout_all), ip_prefix, user_agent, created_at | idx(created_at) |
+| **auth_events** | id, user_id nullable, email_hash, event_type (login_succeeded/login_failed/account_locked/rate_limited/password_changed/password_reset_requested/password_reset), detail, ip_prefix, user_agent, created_at | idx(created_at), idx(user_id, created_at) |
 | **audit_log** | id, actor (user/admin/system), subject_hash, action, metadata JSONB, created_at | append-only |
 | **fx_rates** | date, currency, rate_to_eur | PK(date, currency) |
 

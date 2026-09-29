@@ -12,7 +12,14 @@ How the implemented security controls work. Decisions are in `technical-decision
 | Session fixation | Every login issues a new token and deletes the session previously held by that browser. |
 | Logout | Deletes the current session row, so the token stops working immediately, and clears both cookies. Other devices stay signed in. |
 | CSRF | Double-submit: the readable `csrf` cookie must be echoed in `X-CSRF-Token` on every unsafe request to a protected route, compared in constant time. Together with `SameSite=Lax` and JSON-only bodies (a cross-site HTML form can't produce `application/json`), this covers login and logout CSRF. |
-| Account enumeration | Login returns the same `401 INVALID_CREDENTIALS` for an unknown email and a wrong password, and runs a dummy Argon2 verification for unknown emails so both take the same time. Registration does reveal an existing email (`409`), a product decision in `requirements-analysis.md` F1. |
+| Account enumeration | Login returns the same `401 INVALID_CREDENTIALS` for an unknown email, a wrong password and a locked account, and runs a dummy Argon2 verification for unknown emails so all take the same time. `forgot-password` always answers `202` with an empty body and sends the email in the background, so neither the answer nor its timing depends on the account existing. Registration does reveal an existing email (`409`), a product decision in `requirements-analysis.md` F1, bounded by its rate limit. |
+| Request limits (AUTH-006) | Sliding-window limits in Redis per client IP, email or user (`app/services/auth_guard.py`, table in `docs/api.md`): failed logins 5/min per IP+email and 20/hour per IP, registrations 5/hour per IP, reset requests 5/hour per IP and 3/hour per email, reset attempts 10/hour per IP, password changes 5 per 15 min per user. A hit answers `429 RATE_LIMITED` with `Retry-After`. Redis keys are HMAC hashes, never a raw email or IP. If Redis is unreachable the limits let requests through (logged as `rate_limiter_unavailable`): Redis is a cache (TD-18), and the lockout below still protects accounts. |
+| Account lockout | `LOGIN_LOCKOUT_THRESHOLD` (10) failed logins in a row lock the account for `LOGIN_LOCKOUT_DURATION` (15 min), counted with one atomic `UPDATE` so parallel attempts can't slip past. It lives in the database, independent of Redis. During the lock even the right password gets the generic `401`; a successful login resets the count and a password reset lifts the lock. |
+| Client IP | Taken from `X-Forwarded-For` only as far as the proxies are trusted: with `TRUSTED_PROXY_COUNT=N`, the N-th entry from the right (the one the outermost trusted proxy wrote), otherwise the TCP peer. Entries a client adds itself are ignored. Compose sets 1 (Caddy appends, the Next.js rewrite keeps the header). |
+| Security events | `auth_events` records logins, failures (with reason), lockouts, rate-limit hits, password changes and reset requests/resets, with the email as a keyed hash, the IP as its `/24` or `/48` network and the User-Agent. No raw email, IP, password or token. |
+| Password change | Requires the session, CSRF and the current password (wrong → `400 INVALID_CURRENT_PASSWORD`, logged as a failed login). All the user's sessions end, this browser's included, and the browser gets a fresh session, so a copied cookie stops working (TD-03). |
+| Password reset | `forgot-password` emails a link with a 256-bit single-use token valid for 30 min (`PASSWORD_RESET_TOKEN_TTL`); only its SHA-256 is stored, and only the newest link of an account works. The token is in the URL fragment, so it never reaches server logs or `Referer`. The reset claims the token with one conditional `UPDATE` (works once, even concurrently), sets the password, deletes every session and lifts a lockout. Unknown, expired and used tokens get the same `400 RESET_TOKEN_INVALID`. |
+| Email delivery | SMTP (`SMTP_*`, TD-27): Mailpit locally; staging/production refuse to start without a real host, `SMTP_SECURITY` `starttls`/`tls`, a sender on a real domain and an https `APP_PUBLIC_URL`. Delivery failures are logged without the address. |
 | Consent | Registration requires `accept_terms: true` and stores the accepted `LEGAL_TERMS_VERSION`/`LEGAL_PRIVACY_VERSION` and time (AUTH-002, GAP-05). |
 | Secure cookies in deployments | Startup fails if `SESSION_COOKIE_SECURE=false` in `staging` or `production`. |
 
@@ -40,15 +47,17 @@ Protected routes use the `CurrentAuth` dependency; unsafe ones use `CsrfProtecte
 ## Logging and secrets
 
 - Logs are JSON. User IDs are logged only as a keyed hash (`LOG_HASH_SECRET`, HMAC-SHA256). Emails, passwords, tokens and cookies are never logged, and keys like `password`, `token`, `email`, `cookie` are masked by a last-resort redaction processor.
-- Query strings are not logged (they may carry personal data). No IP address is stored in sessions.
+- Query strings are not logged (they may carry personal data). No IP address is stored in sessions; `auth_events` keeps only the network prefix.
 - All secrets come from environment variables (`backend/app/core/config.py`), and required ones have no defaults. Opaque session tokens need no signing key.
 
 ## Not implemented yet
 
 | Gap | Planned in |
 |---|---|
-| Rate limiting and progressive lockout on login/register (brute-force protection, AUTH-006); `auth_events` audit log of suspicious logins | M3.5 (needs the Redis limiter, M1.6) |
-| Password reset and change password; revoke other sessions on change | M3.6 |
 | Email verification | M3.7 |
+| Rate limits for other route groups (AI, default per-user limit, architecture §4.4) | With the features (M7, M12) |
+| Retention of `auth_events` (180 days) and used/expired reset tokens | Retention job (M11/M12) |
+| Frontend pages for password change and reset (`/[locale]/reset-password` reads the token from the fragment) | M3.8 |
+| Email provider and sender domain with SPF/DKIM/DMARC | TD-27 decision (product owner) |
 | "Log out everywhere" and a session list | Later M3 task |
 | Cleanup of expired sessions of inactive users (they are removed on access and at the user's next login) | Retention job (M11/M12) |

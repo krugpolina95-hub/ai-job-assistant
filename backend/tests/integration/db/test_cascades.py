@@ -7,6 +7,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import (
     AIInteraction,
+    AuthEvent,
+    PasswordResetToken,
     SavedVacancy,
     Search,
     SearchHistoryEvent,
@@ -34,6 +36,8 @@ pytestmark = pytest.mark.asyncio(loop_scope="session")
 USER_OWNED = (
     UserProfile,
     UserSession,
+    AuthEvent,
+    PasswordResetToken,
     UserSkill,
     Search,
     SearchJob,

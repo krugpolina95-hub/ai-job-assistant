@@ -2,7 +2,7 @@
 
 Web app that turns a natural-language job request into structured search parameters, collects vacancies from reviewed sources, and explains how each one matches the user's profile.
 
-> **Status:** project foundation, database schema, backend foundation and backend authentication (register, login, logout, current user) the vacancy module (source adapter port, mock source, ingestion with deduplication, list and details API) the first real source adapter (Adzuna, disabled until its compliance review is complete) and asynchronous search runs (inline dispatcher, per-source rate limits, partial failure, retries, filter reporting). n8n orchestration, matching, AI and the frontend pages are not implemented yet.
+> **Status:** project foundation, database schema, backend foundation and backend authentication (register, login, logout, current user, password change and email reset, rate limits, account lockout and a security event log) the vacancy module (source adapter port, mock source, ingestion with deduplication, list and details API) the first real source adapter (Adzuna, disabled until its compliance review is complete) and asynchronous search runs (inline dispatcher, per-source rate limits, partial failure, retries, filter reporting). n8n orchestration, matching, AI and the frontend pages are not implemented yet.
 
 ## Architecture
 

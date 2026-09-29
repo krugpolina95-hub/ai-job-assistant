@@ -6,14 +6,19 @@ import structlog
 from fastapi import Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from app.api.client import client_ip
 from app.api.cookies import CSRF_COOKIE, CSRF_HEADER, SESSION_COOKIE
 from app.core.config import Settings
 from app.core.errors import CsrfFailedError
+from app.core.rate_limit import RateLimiter
 from app.core.redis import ping_redis
 from app.core.security import PasswordHasher, hash_identifier, tokens_match
 from app.db.session import ping_database
+from app.integrations.email.base import EmailSender
+from app.services.auth_guard import ClientInfo
 from app.services.auth_service import AuthContext, AuthService
 from app.services.dispatch import JobDispatcher
+from app.services.password_reset_service import PasswordResetService
 from app.services.readiness import ReadinessCheck
 from app.services.search_job_service import SearchJobService
 
@@ -48,15 +53,51 @@ DbSessionDep = Annotated[AsyncSession, Depends(get_db_session)]
 ReadinessChecksDep = Annotated[dict[str, ReadinessCheck], Depends(get_readiness_checks)]
 
 
+def get_auth_rate_limiter(request: Request) -> RateLimiter:
+    limiter: RateLimiter = request.app.state.auth_rate_limiter
+    return limiter
+
+
+def get_email_sender(request: Request) -> EmailSender:
+    sender: EmailSender = request.app.state.email_sender
+    return sender
+
+
+def get_client_info(request: Request, settings: SettingsDep) -> ClientInfo:
+    return ClientInfo(
+        ip=client_ip(request, settings.trusted_proxy_count),
+        user_agent=request.headers.get("user-agent"),
+    )
+
+
+PasswordHasherDep = Annotated[PasswordHasher, Depends(get_password_hasher)]
+AuthRateLimiterDep = Annotated[RateLimiter, Depends(get_auth_rate_limiter)]
+ClientInfoDep = Annotated[ClientInfo, Depends(get_client_info)]
+
+
 def get_auth_service(
     db: DbSessionDep,
     settings: SettingsDep,
-    hasher: Annotated[PasswordHasher, Depends(get_password_hasher)],
+    hasher: PasswordHasherDep,
+    limiter: AuthRateLimiterDep,
 ) -> AuthService:
-    return AuthService(db, hasher, settings)
+    return AuthService(db, hasher, settings, limiter)
 
 
 AuthServiceDep = Annotated[AuthService, Depends(get_auth_service)]
+
+
+def get_password_reset_service(
+    db: DbSessionDep,
+    settings: SettingsDep,
+    hasher: PasswordHasherDep,
+    limiter: AuthRateLimiterDep,
+    email_sender: Annotated[EmailSender, Depends(get_email_sender)],
+) -> PasswordResetService:
+    return PasswordResetService(db, hasher, settings, limiter, email_sender)
+
+
+PasswordResetServiceDep = Annotated[PasswordResetService, Depends(get_password_reset_service)]
 
 
 async def get_current_auth(

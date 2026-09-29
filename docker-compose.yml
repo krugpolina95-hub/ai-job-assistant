@@ -61,6 +61,15 @@ services:
       SOURCES_CONTACT: ${SOURCES_CONTACT:-}
       ADZUNA_APP_ID: ${ADZUNA_APP_ID:-}
       ADZUNA_APP_KEY: ${ADZUNA_APP_KEY:-}
+      # Caddy appends the client address; the Next.js rewrite passes the header on unchanged.
+      TRUSTED_PROXY_COUNT: 1
+      APP_PUBLIC_URL: ${APP_PUBLIC_URL:-http://localhost}
+      SMTP_HOST: ${SMTP_HOST:-mailpit}
+      SMTP_PORT: ${SMTP_PORT:-1025}
+      SMTP_SECURITY: ${SMTP_SECURITY:-none}
+      SMTP_USERNAME: ${SMTP_USERNAME:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      EMAIL_FROM: ${EMAIL_FROM:-}
     depends_on:
       postgres:
         condition: service_healthy

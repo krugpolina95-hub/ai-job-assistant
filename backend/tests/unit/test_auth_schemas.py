@@ -3,7 +3,15 @@ from typing import Any
 import pytest
 from pydantic import ValidationError
 
-from app.schemas.auth import LoginIn, RegisterIn, UserOut
+from app.core.security import generate_token
+from app.schemas.auth import (
+    ChangePasswordIn,
+    ForgotPasswordIn,
+    LoginIn,
+    RegisterIn,
+    ResetPasswordIn,
+    UserOut,
+)
 
 VALID: dict[str, Any] = {
     "email": "ada@example.com",
@@ -72,3 +80,48 @@ def test_user_out_exposes_no_secrets() -> None:
         "timezone",
         "created_at",
     }
+
+
+def test_change_password_keeps_passwords_verbatim_and_hidden() -> None:
+    data = ChangePasswordIn(current_password=" old ", new_password="  new password  ")
+
+    assert data.current_password.get_secret_value() == " old "
+    assert data.new_password.get_secret_value() == "  new password  "
+    assert "new password" not in repr(data)
+
+
+@pytest.mark.parametrize(
+    ("override", "field", "error_type"),
+    [
+        ({"new_password": "nine char"}, "new_password", "too_short"),
+        ({"new_password": "x" * 129}, "new_password", "too_long"),
+        ({"current_password": ""}, "current_password", "too_short"),
+        ({"logout_others": False}, "logout_others", "extra_forbidden"),
+    ],
+)
+def test_change_password_rejects_invalid_input(
+    override: dict[str, Any], field: str, error_type: str
+) -> None:
+    body = {"current_password": "old password", "new_password": "new password"} | override
+    with pytest.raises(ValidationError) as error:
+        ChangePasswordIn(**body)
+
+    [problem] = error.value.errors()
+    assert problem["loc"] == (field,)
+    assert error_type in problem["type"]
+
+
+def test_forgot_password_takes_only_a_valid_email() -> None:
+    assert str(ForgotPasswordIn(email=" Ada@Example.com ").email) == "Ada@example.com"
+    for body in ({"email": "nope"}, {"email": "ada@example.com", "extra": 1}):
+        with pytest.raises(ValidationError):
+            ForgotPasswordIn(**body)
+
+
+def test_reset_password_accepts_generated_tokens_only() -> None:
+    token = generate_token()
+    assert ResetPasswordIn(token=token, new_password="new password").token == token
+
+    for bad in ("short", "x" * 129, token[:-1] + "!", f"{token}#"):
+        with pytest.raises(ValidationError):
+            ResetPasswordIn(token=bad, new_password="new password")

@@ -10,18 +10,31 @@ REQUIRED = {
     "LEGAL_TERMS_VERSION": "2026-09",
     "LEGAL_PRIVACY_VERSION": "2026-09",
 }
+# What staging and production need on top: real email delivery and an https app origin.
+DEPLOYED = {
+    "APP_PUBLIC_URL": "https://app.example.com",
+    "SMTP_HOST": "smtp.example.com",
+    "SMTP_SECURITY": "starttls",
+    "EMAIL_FROM": "AI Job Assistant <no-reply@example.com>",
+}
 
 
 @pytest.fixture(autouse=True)
 def clean_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    for name in ("APP_ENV", "SESSION_COOKIE_SECURE", *REQUIRED):
+    for name in ("APP_ENV", "SESSION_COOKIE_SECURE", *REQUIRED, *DEPLOYED):
         monkeypatch.delenv(name, raising=False)
     for name, value in REQUIRED.items():
         monkeypatch.setenv(name, value)
 
 
+def deploy(monkeypatch: pytest.MonkeyPatch, app_env: str) -> None:
+    monkeypatch.setenv("APP_ENV", app_env)
+    for name, value in DEPLOYED.items():
+        monkeypatch.setenv(name, value)
+
+
 def test_reads_values_from_environment(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("APP_ENV", "staging")
+    deploy(monkeypatch, "staging")
 
     settings = Settings(_env_file=None)
 
@@ -62,7 +75,7 @@ def test_secret_is_not_exposed_in_repr() -> None:
 def test_insecure_cookies_are_refused_when_deployed(
     monkeypatch: pytest.MonkeyPatch, app_env: str
 ) -> None:
-    monkeypatch.setenv("APP_ENV", app_env)
+    deploy(monkeypatch, app_env)
     monkeypatch.setenv("SESSION_COOKIE_SECURE", "false")
 
     with pytest.raises(ValidationError, match="SESSION_COOKIE_SECURE"):
@@ -100,3 +113,45 @@ def test_empty_required_variable_still_fails_fast(monkeypatch: pytest.MonkeyPatc
 
     with pytest.raises(ValidationError, match="log_hash_secret"):
         Settings(_env_file=None)
+
+
+@pytest.mark.parametrize("app_env", ["staging", "production"])
+@pytest.mark.parametrize(
+    ("name", "value", "message"),
+    [
+        ("APP_PUBLIC_URL", "http://app.example.com", "APP_PUBLIC_URL"),
+        ("SMTP_SECURITY", "none", "SMTP_SECURITY"),
+        ("SMTP_HOST", "localhost", "SMTP_HOST"),
+        ("EMAIL_FROM", "AI Job Assistant <no-reply@localhost>", "EMAIL_FROM"),
+    ],
+)
+def test_local_email_settings_are_refused_when_deployed(
+    monkeypatch: pytest.MonkeyPatch, app_env: str, name: str, value: str, message: str
+) -> None:
+    deploy(monkeypatch, app_env)
+    monkeypatch.setenv(name, value)
+
+    with pytest.raises(ValidationError, match=message):
+        Settings(_env_file=None)
+
+
+def test_local_defaults_need_no_email_configuration() -> None:
+    settings = Settings(_env_file=None)
+
+    assert (settings.smtp_host, settings.smtp_port, settings.smtp_security) == (
+        "localhost",
+        1025,
+        "none",
+    )
+    assert settings.public_origin == "http://localhost"
+    assert settings.trusted_proxy_count == 0
+
+
+def test_lockout_and_reset_durations_accept_iso_8601(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("LOGIN_LOCKOUT_DURATION", "PT30M")
+    monkeypatch.setenv("PASSWORD_RESET_TOKEN_TTL", "PT1H")
+
+    settings = Settings(_env_file=None)
+
+    assert settings.login_lockout_duration.total_seconds() == 1800
+    assert settings.password_reset_token_ttl.total_seconds() == 3600

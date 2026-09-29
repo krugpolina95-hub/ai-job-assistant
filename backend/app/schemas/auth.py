@@ -13,6 +13,14 @@ PASSWORD_MIN_LENGTH = 10
 PASSWORD_MAX_LENGTH = 128
 
 Email = Annotated[EmailStr, Field(max_length=254)]
+# SecretStr keeps passwords out of reprs, logs and error messages.
+NewPassword = Annotated[
+    SecretStr, Field(min_length=PASSWORD_MIN_LENGTH, max_length=PASSWORD_MAX_LENGTH)
+]
+# Checked against the stored hash, so only bounded: older passwords may follow older rules.
+CurrentPassword = Annotated[SecretStr, Field(min_length=1, max_length=PASSWORD_MAX_LENGTH)]
+# generate_token(): 32 random bytes, URL-safe base64 (43 characters).
+ResetToken = Annotated[str, Field(min_length=20, max_length=128, pattern=r"^[A-Za-z0-9_-]+$")]
 
 
 @cache
@@ -33,8 +41,7 @@ class _CredentialsIn(InputSchema):
 
 
 class RegisterIn(_CredentialsIn):
-    # SecretStr keeps the value out of reprs, logs and error messages.
-    password: SecretStr = Field(min_length=PASSWORD_MIN_LENGTH, max_length=PASSWORD_MAX_LENGTH)
+    password: NewPassword
     accept_terms: Literal[True] = Field(
         description="Consent to the current terms of use and privacy policy (AUTH-002)."
     )
@@ -58,8 +65,27 @@ class RegisterIn(_CredentialsIn):
 
 
 class LoginIn(_CredentialsIn):
-    password: SecretStr = Field(min_length=1, max_length=PASSWORD_MAX_LENGTH)
+    password: CurrentPassword
     remember_me: bool = False
+
+
+class _PasswordsIn(InputSchema):
+    # Passwords are used exactly as typed: whitespace is significant.
+    model_config = ConfigDict(str_strip_whitespace=False)
+
+
+class ChangePasswordIn(_PasswordsIn):
+    current_password: CurrentPassword
+    new_password: NewPassword
+
+
+class ForgotPasswordIn(_CredentialsIn):
+    pass
+
+
+class ResetPasswordIn(_PasswordsIn):
+    token: ResetToken
+    new_password: NewPassword
 
 
 class UserOut(OutputSchema):

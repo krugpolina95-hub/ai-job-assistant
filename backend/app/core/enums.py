@@ -13,6 +13,18 @@ class SupportedLocale(StrEnum):
     RU = "ru"
 
 
+class AuthEventType(StrEnum):
+    """Security-relevant account events (AUTH-006), stored in `auth_events`."""
+
+    LOGIN_SUCCEEDED = "login_succeeded"
+    LOGIN_FAILED = "login_failed"
+    ACCOUNT_LOCKED = "account_locked"
+    RATE_LIMITED = "rate_limited"
+    PASSWORD_CHANGED = "password_changed"  # noqa: S105
+    PASSWORD_RESET_REQUESTED = "password_reset_requested"  # noqa: S105
+    PASSWORD_RESET = "password_reset"  # noqa: S105
+
+
 class WorkFormat(StrEnum):
     REMOTE = "remote"
     HYBRID = "hybrid"

@@ -18,6 +18,8 @@ class ErrorCode(StrEnum):
     VALIDATION_ERROR = "VALIDATION_ERROR"
     UNAUTHENTICATED = "UNAUTHENTICATED"
     INVALID_CREDENTIALS = "INVALID_CREDENTIALS"
+    INVALID_CURRENT_PASSWORD = "INVALID_CURRENT_PASSWORD"  # noqa: S105
+    RESET_TOKEN_INVALID = "RESET_TOKEN_INVALID"  # noqa: S105
     CSRF_FAILED = "CSRF_FAILED"
     NOT_FOUND = "NOT_FOUND"
     METHOD_NOT_ALLOWED = "METHOD_NOT_ALLOWED"
@@ -43,6 +45,8 @@ class AppError(Exception):
     code: ClassVar[ErrorCode] = ErrorCode.INTERNAL_ERROR
     status_code: ClassVar[HTTPStatus] = HTTPStatus.INTERNAL_SERVER_ERROR
     default_message: ClassVar[str] = "Internal server error"
+    # Extra response headers (e.g. Retry-After). Plain data, so this module stays web-free.
+    headers: Mapping[str, str] | None = None
 
     def __init__(self, message: str | None = None, *, details: ErrorDetails = None) -> None:
         self.message = message or self.default_message
@@ -86,6 +90,22 @@ class InvalidCredentialsError(AppError):
     code = ErrorCode.INVALID_CREDENTIALS
     status_code = HTTPStatus.UNAUTHORIZED
     default_message = "Invalid email or password"
+
+
+class InvalidCurrentPasswordError(AppError):
+    """Changing the password with a wrong current password. Not 401: the session is valid."""
+
+    code = ErrorCode.INVALID_CURRENT_PASSWORD
+    status_code = HTTPStatus.BAD_REQUEST
+    default_message = "The current password is incorrect"
+
+
+class ResetTokenInvalidError(AppError):
+    """Same answer for an unknown, expired or already used reset link."""
+
+    code = ErrorCode.RESET_TOKEN_INVALID
+    status_code = HTTPStatus.BAD_REQUEST
+    default_message = "The password reset link is invalid or has expired"
 
 
 class CsrfFailedError(AppError):
@@ -136,6 +156,17 @@ class RateLimitedError(AppError):
     code = ErrorCode.RATE_LIMITED
     status_code = HTTPStatus.TOO_MANY_REQUESTS
     default_message = "Too many requests; try again later"
+
+    def __init__(
+        self,
+        message: str | None = None,
+        *,
+        details: ErrorDetails = None,
+        retry_after_seconds: int | None = None,
+    ) -> None:
+        super().__init__(message, details=details)
+        if retry_after_seconds is not None:
+            self.headers = {"Retry-After": str(retry_after_seconds)}
 
 
 class IdempotencyKeyReusedError(AppError):

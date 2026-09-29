@@ -20,12 +20,15 @@ from app.core.ids import uuid7
 from app.db.session import create_db_engine, create_session_factory
 from app.main import create_app
 from tests.conftest import build_test_settings
+from tests.fakes import install_test_doubles
 
 PUBLIC_ROUTES = {
     ("GET", "/api/v1/health"),
     ("GET", "/api/v1/ready"),
     ("POST", "/api/v1/auth/register"),
     ("POST", "/api/v1/auth/login"),
+    ("POST", "/api/v1/auth/forgot-password"),
+    ("POST", "/api/v1/auth/reset-password"),
 }
 UNSAFE_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
 
@@ -61,6 +64,7 @@ async def client() -> AsyncIterator[AsyncClient]:
     app = create_app(SETTINGS)
     # No request below reaches the database: authentication fails on the missing cookie first.
     app.state.db_session_factory = create_session_factory(create_db_engine(SETTINGS))
+    install_test_doubles(app)
     async with AsyncClient(transport=ASGITransport(app=app), base_url="https://testserver") as c:
         yield c
 

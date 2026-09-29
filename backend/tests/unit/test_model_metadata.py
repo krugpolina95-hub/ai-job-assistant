@@ -24,6 +24,8 @@ def test_expected_tables_exist() -> None:
         "users",
         "user_profiles",
         "user_sessions",
+        "auth_events",
+        "password_reset_tokens",
         "skills",
         "skill_aliases",
         "user_skills",

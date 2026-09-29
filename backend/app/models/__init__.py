@@ -1,6 +1,7 @@
 """All ORM models. Importing this package registers every table on `Base.metadata`."""
 
 from app.models.ai_interaction import AIInteraction
+from app.models.auth import AuthEvent, PasswordResetToken
 from app.models.history import SearchHistoryEvent
 from app.models.job import SearchJob, SearchJobResult, SearchJobSource
 from app.models.match import VacancyMatch
@@ -15,6 +16,8 @@ from app.models.vacancy import Vacancy
 
 __all__ = [
     "AIInteraction",
+    "AuthEvent",
+    "PasswordResetToken",
     "SavedVacancy",
     "Search",
     "SearchHistoryEvent",

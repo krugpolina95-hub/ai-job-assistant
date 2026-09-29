@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.enums import (
     AIInteractionStatus,
     AITask,
+    AuthEventType,
     HistoryEventType,
     MatchLevel,
     SearchChannel,
@@ -19,6 +20,8 @@ from app.core.enums import (
 from app.core.ids import uuid7
 from app.models import (
     AIInteraction,
+    AuthEvent,
+    PasswordResetToken,
     SavedVacancy,
     Search,
     SearchHistoryEvent,
@@ -136,6 +139,12 @@ async def make_user_graph(session: AsyncSession) -> dict[str, Any]:
                 expires_at=datetime.now(UTC) + timedelta(days=1),
             ),
             UserSkill(user_id=user.id, skill_id=skill.id),
+            AuthEvent(user_id=user.id, event_type=AuthEventType.LOGIN_SUCCEEDED),
+            PasswordResetToken(
+                user_id=user.id,
+                token_hash=hashlib.sha256(uuid7().bytes).hexdigest(),
+                expires_at=datetime.now(UTC) + timedelta(minutes=30),
+            ),
             SearchJobSource(search_job_id=job.id, source_id=source.id),
             SearchJobResult(search_job_id=job.id, vacancy_id=vacancy.id, rank=1),
             VacancyMatch(

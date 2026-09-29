@@ -1,6 +1,6 @@
 # Database Schema
 
-PostgreSQL 16. The schema is owned by Alembic migrations in `backend/alembic/versions/`. ORM models live in `backend/app/models/`. This document describes the schema at revision **`008e13f9596a`** (`ff0fd9cabbe9` initial MVP schema, `af0f71f9d25c` user sessions, `008e13f9596a` search-run tracking).
+PostgreSQL 16. The schema is owned by Alembic migrations in `backend/alembic/versions/`. ORM models live in `backend/app/models/`. This document describes the schema at revision **`0ab7835a44ff`** (`ff0fd9cabbe9` initial MVP schema, `af0f71f9d25c` user sessions, `008e13f9596a` search-run tracking, `0ab7835a44ff` auth events and password reset tokens).
 
 Related: `architecture-plan.md` §7 (data architecture), TD-12 (idempotency), TD-13 (results), TD-14 (salary), TD-16 (dedup), TD-23 (storage policy), TD-24 (deletion), TD-26 (IDs).
 
@@ -68,8 +68,8 @@ Account identity. Login sessions live in `user_sessions`.
 | timezone | text **NN** | IANA name, default `UTC`. |
 | terms_version, privacy_version | text | Versions of the terms/privacy policy accepted at registration (`LEGAL_*_VERSION`, AUTH-002). |
 | terms_accepted_at | timestamptz | |
-| failed_login_count | integer **NN** | Default 0, ≥ 0. Reserved for the login lockout (M3.5), not written yet. |
-| locked_until | timestamptz | Reserved for the login lockout (M3.5). |
+| failed_login_count | integer **NN** | Default 0, ≥ 0. Failed logins in a row, counted atomically. Reset by a successful login, by a password reset, and when it reaches `LOGIN_LOCKOUT_THRESHOLD` (the account locks). |
+| locked_until | timestamptz | Login lockout end (`LOGIN_LOCKOUT_DURATION` after the threshold is reached). Cleared by a successful login after it passes and by a password reset. |
 | last_login_at | timestamptz | Set on registration and every successful login. |
 | created_at, updated_at | timestamptz **NN** | |
 
@@ -86,7 +86,35 @@ Server-side login sessions (TD-03). The cookie holds a random 256-bit token; onl
 | user_agent | text | ≤ 512 chars. No IP address is stored. |
 | created_at | timestamptz **NN** | |
 
-A session is deleted on logout, on a login that replaces it (token rotation), and when it is found expired. A user's expired sessions are also removed at each login.
+A session is deleted on logout, on a login that replaces it (token rotation), and when it is found expired. A user's expired sessions are also removed at each login. A password change deletes all of the user's sessions and creates one new session for the browser that made the change; a password reset deletes them all. `created_at` is set by the application at login, so `expires_at - created_at` tells a "remember me" session from a browser session.
+
+### auth_events
+Append-only security log (AUTH-006): logins, failures, lockouts, rate-limit hits, password changes and resets. It never holds a raw email or IP address. Not exposed by the API.
+
+| Column | Type | Notes |
+|---|---|---|
+| id | uuid PK | |
+| user_id | uuid | FK `users` CASCADE. NULL when the email has no account (e.g. a failed login for an unknown email). Index `(user_id, created_at)`. |
+| event_type | text **NN** | `login_succeeded \| login_failed \| account_locked \| rate_limited \| password_changed \| password_reset_requested \| password_reset`. |
+| email_hash | text | Keyed hash (HMAC-SHA256 with `LOG_HASH_SECRET`, 16 hex chars) of the lower-cased email, to correlate attempts on one address. ≤ 64 chars. |
+| ip_prefix | text | Client network, `/24` (IPv4) or `/48` (IPv6), e.g. `203.0.113.0/24`. ≤ 64 chars. |
+| user_agent | text | ≤ 512 chars. |
+| detail | text | Machine-readable reason: `unknown_account`, `wrong_password`, `account_locked` or `password_change` for `login_failed`; the limit name for `rate_limited`. ≤ 64 chars. |
+| created_at | timestamptz **NN** | Indexed (retention, TD-24: 180 days). |
+
+### password_reset_tokens
+Single-use password reset links (AUTH-004). Like sessions, only the SHA-256 of the emailed token is stored.
+
+| Column | Type | Notes |
+|---|---|---|
+| id | uuid PK | |
+| user_id | uuid **NN** | FK `users` CASCADE. Indexed. |
+| token_hash | text **NN** | UNIQUE. SHA-256 hex (64 chars, CHECKed). |
+| expires_at | timestamptz **NN** | Request time + `PASSWORD_RESET_TOKEN_TTL` (30 min). |
+| used_at | timestamptz | Set when the token is used. A token is claimed with one conditional `UPDATE` (unused and unexpired), so it works once even under concurrent requests. |
+| created_at | timestamptz **NN** | |
+
+A new reset request deletes the user's unused tokens, so only the newest link works. A successful reset deletes the remaining ones.
 
 ### user_profiles
 One per user (`UNIQUE(user_id)`). Professional data only. Sensitive attributes (age, gender, nationality, religion, health, marital status, photo) are deliberately absent (MATCH-004).
@@ -327,7 +355,7 @@ Metadata of AI calls for cost, quota and quality tracking. **Prompt and response
 
 | Action | Effect |
 |---|---|
-| Delete a user (AMB-14) | `DELETE FROM users` cascades to every user-owned table: sessions, profile, skills, searches, jobs, job sources, results, matches, saved vacancies, history events and AI interactions. Shared `vacancies`, `sources` and `skills` stay. |
+| Delete a user (AMB-14) | `DELETE FROM users` cascades to every user-owned table: sessions, auth events, reset tokens, profile, skills, searches, jobs, job sources, results, matches, saved vacancies, history events and AI interactions. Shared `vacancies`, `sources` and `skills` stay. |
 | Delete one search | Cascades to its jobs → job sources, results, matches. Its history events are deleted. AI interactions keep their metrics with `search_id = NULL`. |
 | Delete history (AMB-13) | The service deletes the user's searches (cascades as above), remaining history events and AI interactions. Saved vacancies are kept. |
 | Vacancy retention (TD-24) | Deleting a vacancy cascades to job results and matches. It is **blocked** while any user has it saved. |
@@ -358,8 +386,6 @@ Tables from `architecture-plan.md` §7.2 that are **deferred** to the milestone 
 
 | Table | Milestone |
 |---|---|
-| `auth_events` | M3.5 rate limiting and lockout |
-| `password_reset_tokens` | M3.6 password reset |
 | `email_verification_tokens` | M3.7 email verification |
 | `fx_rates` | M5 salary normalization (TD-14) |
 | `audit_log` | M11 account deletion |

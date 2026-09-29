@@ -7,8 +7,8 @@ from sqlalchemy import select, text, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.enums import SearchJobStatus, StoragePolicy
-from app.models import SavedVacancy, SearchJob, User, UserProfile
+from app.core.enums import AuthEventType, SearchJobStatus, StoragePolicy
+from app.models import AuthEvent, PasswordResetToken, SavedVacancy, SearchJob, User, UserProfile
 from tests.integration.db.factories import (
     make_search,
     make_search_job,
@@ -243,3 +243,24 @@ async def test_profile_salary_is_stored_exactly(db_session: AsyncSession) -> Non
     await db_session.refresh(profile)
 
     assert profile.salary_min == Decimal("1500.50")
+
+
+async def test_auth_tables_reject_unknown_events_and_raw_tokens(db_session: AsyncSession) -> None:
+    user = await make_user(db_session)
+    event = AuthEvent(user_id=None, event_type=AuthEventType.LOGIN_FAILED)
+    token = PasswordResetToken(user_id=user.id, token_hash="a" * 64, expires_at=datetime.now(UTC))
+    db_session.add_all([event, token])
+    await db_session.flush()
+
+    await expect_violation(
+        db_session,
+        "ck_auth_events_event_type",
+        "UPDATE auth_events SET event_type = 'hacked' WHERE id = :id",
+        event.id,
+    )
+    await expect_violation(
+        db_session,
+        "ck_password_reset_tokens_token_hash_sha256",
+        "UPDATE password_reset_tokens SET token_hash = 'plain-token' WHERE id = :id",
+        token.id,
+    )

@@ -17,6 +17,7 @@ from app.core.security import hash_token
 from app.main import create_app
 from app.models import User, UserSession
 from tests.conftest import TEST_LOG_HASH_SECRET
+from tests.fakes import install_test_doubles
 
 pytestmark = pytest.mark.asyncio(loop_scope="session")
 
@@ -401,6 +402,7 @@ def api_app_with(settings: Settings, connection: AsyncConnection) -> FastAPI:
     app.state.db_session_factory = async_sessionmaker(
         bind=connection, join_transaction_mode="create_savepoint", expire_on_commit=False
     )
+    install_test_doubles(app)
     return app
 
 
