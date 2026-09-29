@@ -1,10 +1,12 @@
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
+import httpx
 import structlog
 from fastapi import FastAPI
 
 from app.api.errors import register_error_handlers
+from app.api.internal.router import internal_v1_router
 from app.api.middleware import (
     BodySizeLimitMiddleware,
     RequestContextMiddleware,
@@ -19,8 +21,9 @@ from app.core.security import PasswordHasher
 from app.db.session import create_db_engine, create_session_factory
 from app.integrations.email.background import BackgroundEmailSender
 from app.integrations.email.smtp import SmtpEmailSender
+from app.integrations.n8n.webhook import N8nWebhookClient
 from app.integrations.sources.rate_limit import RedisSourceRateLimiter
-from app.services.dispatch import InlineDispatcher
+from app.services.dispatch import InlineDispatcher, N8nDispatcher
 from app.services.job_runner import SearchJobRunner
 
 logger = structlog.stdlib.get_logger(__name__)
@@ -37,17 +40,35 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     )
     email_sender = BackgroundEmailSender(SmtpEmailSender(settings))
     app.state.email_sender = email_sender
-    dispatcher = InlineDispatcher(
-        SearchJobRunner(
-            app.state.db_session_factory, settings, RedisSourceRateLimiter(app.state.redis)
-        )
+    runner = SearchJobRunner(
+        app.state.db_session_factory, settings, RedisSourceRateLimiter(app.state.redis)
     )
+    app.state.job_runner = runner
+    n8n_http: httpx.AsyncClient | None = None
+    dispatcher: InlineDispatcher | N8nDispatcher
+    if settings.job_dispatcher == "n8n":
+        if settings.n8n_webhook_url is None or settings.n8n_webhook_secret is None:
+            raise RuntimeError("n8n dispatcher without webhook settings")  # config validates
+        n8n_http = httpx.AsyncClient(
+            timeout=settings.n8n_webhook_timeout_seconds, follow_redirects=False
+        )
+        webhook = N8nWebhookClient(
+            n8n_http,
+            url=str(settings.n8n_webhook_url),
+            secret=settings.n8n_webhook_secret.get_secret_value(),
+        )
+        dispatcher = N8nDispatcher(webhook, app.state.db_session_factory)
+    else:
+        dispatcher = InlineDispatcher(runner)
     app.state.dispatcher = dispatcher
     logger.info("app_started", app_env=settings.app_env, job_dispatcher=settings.job_dispatcher)
     try:
         yield
     finally:
-        await dispatcher.drain()
+        if isinstance(dispatcher, InlineDispatcher):
+            await dispatcher.drain()
+        if n8n_http is not None:
+            await n8n_http.aclose()
         await email_sender.drain()
         await app.state.redis.aclose()
         await app.state.db_engine.dispose()
@@ -80,4 +101,5 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.add_middleware(SecurityHeadersMiddleware)
 
     app.include_router(api_v1_router)
+    app.include_router(internal_v1_router)
     return app

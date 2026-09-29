@@ -256,7 +256,7 @@ One asynchronous run of a search (SEARCH-006). The transition rules live in the 
 | progress | jsonb **NN** | `{sources_total, sources_done, results_so_far}` (TD-25). |
 | deadline_at | timestamptz **NN** | `created_at + SEARCH_JOB_DEADLINE_SECONDS` (default 120 s). |
 | cancel_requested_at, started_at, finished_at | timestamptz | CHECK `finished_at ≥ started_at`. |
-| error_code, error_message | text | |
+| error_code, error_message | text | `error_code`: `ALL_SOURCES_FAILED`, `NO_SOURCES_RAN`, or `DISPATCH_ERROR` when n8n could not be triggered (TD-09). |
 | result_count | integer **NN** | Default 0, ≥ 0. |
 | created_at, updated_at | timestamptz **NN** | |
 
@@ -272,7 +272,7 @@ Per-source outcome of a job, used to decide `completed` vs `partially_completed`
 | status | text **NN** | `pending \| running \| succeeded \| failed \| timed_out \| skipped`, default `pending`. |
 | fetched_count | integer **NN** | Raw records the source returned. |
 | stored_count | integer **NN** | Vacancies this source linked to the run (after filters and dedup). |
-| error_code | text | Typed `SourceErrorCode` (e.g. `SOURCE_UNAVAILABLE`, `SOURCE_QUOTA_EXHAUSTED`, `SOURCE_DEADLINE_EXCEEDED`, `SOURCE_RUN_CANCELLED`). Never a raw message. |
+| error_code | text | Typed `SourceErrorCode` (e.g. `SOURCE_UNAVAILABLE`, `SOURCE_QUOTA_EXHAUSTED`, `SOURCE_DEADLINE_EXCEEDED`, `SOURCE_RUN_CANCELLED`, `SOURCE_NOT_RUN` when the run failed before starting). Never a raw message. |
 | duration_ms | integer | ≥ 0. |
 | attempts | smallint **NN** | Claims so far, ≥ 0. Also the fencing token: an outcome is stored only by the claim with the current attempt number. |
 | started_at, finished_at | timestamptz | Claim time (a `running` row older than `SOURCE_RUN_LEASE_SECONDS` may be reclaimed) and outcome time. |

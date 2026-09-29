@@ -133,8 +133,15 @@ class SearchJobService:
         await self._db.commit()
         logger.info("search_job_created", job_id=str(job.id), sources=len(sources))
 
-        await self._dispatcher.dispatch(job.id)
-        return await self.get(user_id, job.id), True
+        job_id = job.id
+        await self._dispatcher.dispatch(job_id)
+        # The dispatcher may have changed the run in its own session (e.g. failed it with
+        # DISPATCH_ERROR). Expire the run's rows so `get` reloads them instead of reading this
+        # session's cache; other objects (the signed-in user) stay loaded.
+        for instance in list(self._db.identity_map.values()):
+            if isinstance(instance, (SearchJob, SearchJobSource)):
+                self._db.expire(instance)
+        return await self.get(user_id, job_id), True
 
     async def _existing_run(
         self, user_id: uuid.UUID, search_id: uuid.UUID, idempotency_key: str | None

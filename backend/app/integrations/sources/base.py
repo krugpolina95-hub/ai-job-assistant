@@ -35,6 +35,7 @@ class SourceErrorCode(StrEnum):
     DISABLED = "SOURCE_DISABLED"
     CANCELLED = "SOURCE_RUN_CANCELLED"
     UNEXPECTED = "SOURCE_UNEXPECTED_ERROR"
+    NOT_RUN = "SOURCE_NOT_RUN"  # the run failed before this source started (dispatch error)
 
 
 # Failures that may succeed if tried again soon. Everything else is final for this run.

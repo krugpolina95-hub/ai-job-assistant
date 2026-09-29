@@ -53,3 +53,38 @@ def tokens_match(expected: str | None, provided: str | None) -> bool:
 def hash_identifier(value: str, key: str) -> str:
     """Stable, non-reversible identifier for logs (TD-21)."""
     return hmac.new(key.encode(), value.encode(), hashlib.sha256).hexdigest()[:16]
+
+
+SIGNATURE_PREFIX = "sha256="
+
+
+def request_signature(secret: str, *, timestamp: str, method: str, path: str, body: bytes) -> str:
+    """HMAC for calls between the backend and n8n (architecture §8.3), both directions.
+
+    The signed text binds the time, the method, the path (with query) and the body hash, one
+    per line. Binding method and path matters because many internal calls have an empty body:
+    a signature can't be replayed against another endpoint or another job."""
+    canonical = "\n".join(
+        [timestamp, method.upper(), path, hashlib.sha256(body).hexdigest()]
+    ).encode()
+    return SIGNATURE_PREFIX + hmac.new(secret.encode(), canonical, hashlib.sha256).hexdigest()
+
+
+def signature_is_valid(
+    secret: str,
+    signature: str | None,
+    *,
+    timestamp: str | None,
+    method: str,
+    path: str,
+    body: bytes,
+    now: float,
+    max_age_seconds: int,
+) -> bool:
+    """A matching signature on a timestamp within ±`max_age_seconds` of `now` (replay bound)."""
+    if not signature or not timestamp or not timestamp.isdigit():
+        return False
+    if abs(now - int(timestamp)) > max_age_seconds:
+        return False
+    expected = request_signature(secret, timestamp=timestamp, method=method, path=path, body=body)
+    return hmac.compare_digest(expected.encode(), signature.encode())

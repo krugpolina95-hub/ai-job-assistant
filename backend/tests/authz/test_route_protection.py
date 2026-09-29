@@ -16,6 +16,7 @@ from fastapi.routing import APIRoute, iter_route_contexts
 from httpx import ASGITransport, AsyncClient
 
 from app.api.deps import get_current_auth, get_current_auth_with_csrf
+from app.api.internal.auth import verify_internal_request
 from app.core.ids import uuid7
 from app.db.session import create_db_engine, create_session_factory
 from app.main import create_app
@@ -105,3 +106,18 @@ def test_every_unsafe_protected_route_checks_csrf() -> None:
     assert unsafe_protected, "expected at least one unsafe protected route (logout)"
     for method, path, route in unsafe_protected:
         assert get_current_auth_with_csrf in dependency_calls(route.dependant), f"{method} {path}"
+
+
+def test_every_internal_route_verifies_the_caller() -> None:
+    """n8n's door (/internal/v1): each route needs the service token + HMAC, never a session."""
+    internal = [
+        (method, context.path, context.route)
+        for context in iter_route_contexts(APP.routes)
+        if isinstance(context.route, APIRoute) and context.path.startswith("/internal/")
+        for method in context.methods or ()
+    ]
+
+    assert len(internal) >= 5
+    for method, path, route in internal:
+        assert verify_internal_request in dependency_calls(route.dependant), f"{method} {path}"
+        assert not route.include_in_schema, f"{method} {path} is in the public API document"

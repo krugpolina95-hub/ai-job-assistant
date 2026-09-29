@@ -46,6 +46,17 @@ Protected routes use the `CurrentAuth` dependency; unsafe ones use `CsrfProtecte
 | Source rate limits | Every outbound request takes a token from the source's Redis bucket (Adzuna 25/min) and its daily quota (Adzuna 250/day), atomically across processes. Short waits are bounded by `SOURCE_RATE_LIMIT_MAX_WAIT_SECONDS` and the run deadline; a spent quota fails the source without a request; if Redis is unreachable the source fails closed (`SOURCE_RATE_LIMITER_UNAVAILABLE`). |
 | User run limits | Separate from source limits: at most `SEARCH_MAX_ACTIVE_JOBS_PER_USER` active runs (enforced under a per-user row lock) and `SEARCH_MAX_RUNS_PER_HOUR` runs per hour; one active run per search (unique index); `Idempotency-Key` replays return the same run. |
 
+## Internal API and n8n (TD-06, TD-09, M6.1–M6.2)
+
+| Control | Implementation |
+|---|---|
+| Reachability | `/internal/v1` is not proxied by Next.js (only `/api/v1` is), the backend publishes no port, and n8n shares only the `automation` network with it. The routes are absent from the public OpenAPI document. |
+| Authentication | Bearer service token (`INTERNAL_API_TOKEN`, constant-time compare) **and** an HMAC-SHA256 signature (`INTERNAL_HMAC_SECRET`) over timestamp, method, path with query and body hash. Signing method and path stops a captured signature from being replayed against another endpoint or run (most internal bodies are empty). Timestamps outside ±300 s are refused. The dependency sits on the router, so no internal route can skip it (checked by `tests/authz`). |
+| Fail closed | Without the token and the secret configured, every internal request is `401`. `JOB_DISPATCHER=n8n` refuses to start unless the webhook URL and all three secrets are set, and the three secrets must differ (one per direction). |
+| Replays within the window | Every internal step is idempotent (atomic source claims, fenced outcomes, idempotent status and finalize), so replaying a signed request inside the 300 s window changes nothing. |
+| Data minimization | n8n receives run ids, statuses, source keys and counts, never search parameters, profile data or vacancy content. |
+| Trigger | The backend signs the WF-001 trigger with its own secret (`N8N_WEBHOOK_SECRET`), does not follow redirects, and fails the run with `DISPATCH_ERROR` if n8n can't be reached, instead of leaving it pending. |
+
 ## AI calls (TD-07, M7.1 foundation)
 
 No AI provider is configured yet and no endpoint calls the AI; the controls below apply to every future AI feature because they sit in the one entry point, `AIService`.

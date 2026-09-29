@@ -102,6 +102,16 @@ class SearchJobRepository(UserOwnedRepository[SearchJob]):
         )
         return list(result)
 
+    async def list_overdue_ids(self, now: datetime, limit: int) -> list[uuid.UUID]:
+        """Active runs past their deadline, oldest first (served by the partial deadline index)."""
+        result = await self.session.scalars(
+            select(SearchJob.id)
+            .where(SearchJob.status.in_(ACTIVE_SEARCH_JOB_STATUSES), SearchJob.deadline_at <= now)
+            .order_by(SearchJob.deadline_at)
+            .limit(limit)
+        )
+        return list(result)
+
     async def get_by_id_for_runner(self, job_id: uuid.UUID) -> SearchJob | None:
         return await self.session.get(SearchJob, job_id)
 

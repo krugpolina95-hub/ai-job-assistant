@@ -99,7 +99,8 @@ class Settings(BaseSettings):
     source_run_lease_seconds: int = Field(default=60, ge=5, le=3600)
 
     # Search runs (SEARCH-006, TD-12). User-level limits are separate from source limits above.
-    job_dispatcher: Literal["inline"] = "inline"  # "n8n" arrives with M6 (TD-09)
+    # inline: runs in this process (dev, tests, fallback); n8n: signed webhook to WF-001 (TD-09).
+    job_dispatcher: Literal["inline", "n8n"] = "inline"
     search_job_deadline_seconds: int = Field(default=120, ge=10, le=3600)
     search_max_active_jobs_per_user: int = Field(default=2, ge=1, le=20)
     search_max_runs_per_hour: int = Field(default=20, ge=1, le=1000)
@@ -114,6 +115,17 @@ class Settings(BaseSettings):
     ai_circuit_open_seconds: float = Field(default=60.0, gt=0, le=3600)
     ai_max_calls_per_minute: int = Field(default=10, ge=1, le=1000)
     ai_max_calls_per_day: int = Field(default=50, ge=1, le=10_000)
+
+    # n8n integration (TD-06, TD-09, architecture §8.3). One secret per direction:
+    # backend → n8n: N8N_WEBHOOK_SECRET signs the WF-001 trigger.
+    # n8n → backend: INTERNAL_API_TOKEN (bearer) + INTERNAL_HMAC_SECRET sign /internal/v1 calls.
+    # Without the last two the internal API refuses every request.
+    n8n_webhook_url: HttpUrl | None = None
+    n8n_webhook_secret: SecretStr | None = Field(default=None, min_length=32)
+    n8n_webhook_timeout_seconds: float = Field(default=5.0, gt=0, le=30)
+    internal_api_token: SecretStr | None = Field(default=None, min_length=32)
+    internal_hmac_secret: SecretStr | None = Field(default=None, min_length=32)
+    internal_signature_max_age_seconds: int = Field(default=300, ge=30, le=900)
 
     # Versions of the legal documents a user accepts at registration (AUTH-002, GAP-05).
     legal_terms_version: str = Field(min_length=1, max_length=64)
@@ -145,6 +157,27 @@ class Settings(BaseSettings):
         if "localhost" in (self.smtp_host, self.email_from.rsplit("@", 1)[-1].rstrip(">")):
             raise ValueError("Set SMTP_HOST and EMAIL_FROM for staging and production")
         return self
+
+    @model_validator(mode="after")
+    def require_n8n_settings_for_the_n8n_dispatcher(self) -> Self:
+        secrets = [self.n8n_webhook_secret, self.internal_api_token, self.internal_hmac_secret]
+        if self.job_dispatcher == "n8n" and (
+            self.n8n_webhook_url is None or any(secret is None for secret in secrets)
+        ):
+            raise ValueError(
+                "JOB_DISPATCHER=n8n needs N8N_WEBHOOK_URL, N8N_WEBHOOK_SECRET, "
+                "INTERNAL_API_TOKEN and INTERNAL_HMAC_SECRET"
+            )
+        values = [secret.get_secret_value() for secret in secrets if secret is not None]
+        if len(values) != len(set(values)):
+            raise ValueError(
+                "N8N_WEBHOOK_SECRET, INTERNAL_API_TOKEN and INTERNAL_HMAC_SECRET must differ"
+            )
+        return self
+
+    @property
+    def internal_api_enabled(self) -> bool:
+        return self.internal_api_token is not None and self.internal_hmac_secret is not None
 
     @property
     def public_origin(self) -> str:

@@ -4,7 +4,7 @@
 
 Each step is idempotent and safe with several workers or processes: a source is claimed
 atomically, outcomes are fenced by attempt number, links never duplicate, and state changes
-lock the job row. The same steps become /internal/v1 endpoints for n8n in M6 (TD-06, TD-09):
+lock the job row. The same steps back the /internal/v1 endpoints n8n calls (TD-06, TD-09):
 nothing here knows who calls it.
 """
 
@@ -22,14 +22,16 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.core.config import Settings
 from app.core.enums import FilterMode, SearchFilter, SearchJobSourceStatus, SearchJobStatus
-from app.core.errors import SourceNotEnabledError
+from app.core.errors import JobNotRunningError, NotFoundError, SourceNotEnabledError
 from app.integrations.sources.base import RETRYABLE_SOURCE_ERRORS, SourceErrorCode
 from app.integrations.sources.rate_limit import SourceRateLimiter
 from app.integrations.sources.registry import get_source_definition
 from app.models import Vacancy
 from app.repositories.search import SearchJobRepository
+from app.schemas.internal import FinalizeOut, JobContextOut, JobStatusOut, SourceRunOut
 from app.schemas.search import SearchParamsV1
 from app.services import job_lifecycle, search_filters
+from app.services.job_state import is_terminal
 from app.services.source_run_service import SourceRunResult, SourceRunService
 
 logger = structlog.stdlib.get_logger(__name__)
@@ -64,6 +66,8 @@ class SearchJobRunner:
         self._now = clock
 
     async def run(self, job_id: uuid.UUID) -> None:
+        """The whole run in this process (InlineDispatcher). n8n drives the same steps one by
+        one through /internal/v1 (TD-09)."""
         if not await self.start(job_id):
             return
         async with self._sessions() as db:
@@ -71,8 +75,89 @@ class SearchJobRunner:
             source_ids = [source.source_id for source in sources]
         # One failing source never stops the others: each runs in its own task and session.
         await asyncio.gather(*(self.run_source(job_id, source_id) for source_id in source_ids))
+        await self.finalize(job_id)
+
+    # --- steps for the orchestrator (n8n) -------------------------------------------------
+
+    async def context(self, job_id: uuid.UUID) -> JobContextOut:
         async with self._sessions() as db:
-            await job_lifecycle.finalize(db, job_id, self._now())
+            repo = SearchJobRepository(db)
+            job = await repo.get_by_id_for_runner(job_id)
+            if job is None:
+                raise NotFoundError()
+            sources = await repo.list_sources(job_id)
+            return JobContextOut(
+                job_id=job.id,
+                status=job.status,
+                deadline_at=job.deadline_at,
+                sources=[source.source.adapter_key for source in sources],
+            )
+
+    async def mark_running(self, job_id: uuid.UUID) -> JobStatusOut:
+        """`start` for the orchestrator: 404 for an unknown run, 410 when it is over."""
+        if not await self.start(job_id):
+            status = (await self.context(job_id)).status
+            raise JobNotRunningError(details={"status": status})
+        return JobStatusOut(job_id=job_id, status=SearchJobStatus.RUNNING)
+
+    async def run_source_by_key(self, job_id: uuid.UUID, key: str) -> SourceRunOut:
+        """Runs one source of a run (WF-002) and reports its recorded outcome. Idempotent: a
+        source already done is not run again, its outcome is returned as is."""
+        async with self._sessions() as db:
+            repo = SearchJobRepository(db)
+            job = await repo.get_by_id_for_runner(job_id)
+            source = next(
+                (s for s in await repo.list_sources(job_id) if s.source.adapter_key == key), None
+            )
+            if job is None or source is None:
+                raise NotFoundError()
+            status, source_id = job.status, source.source_id
+        if is_terminal(status):
+            raise JobNotRunningError(details={"status": status})
+        if status is SearchJobStatus.PENDING:
+            await self.start(job_id)  # the orchestrator skipped the status call: harmless
+        await self.run_source(job_id, source_id)
+        async with self._sessions() as db:
+            row = await SearchJobRepository(db).get_source_run(job_id, source_id)
+            if row is None:
+                raise NotFoundError()
+            return SourceRunOut(
+                job_id=job_id,
+                source=key,
+                status=row.status,
+                attempts=row.attempts,
+                fetched_count=row.fetched_count,
+                stored_count=row.stored_count,
+                error_code=row.error_code,
+            )
+
+    async def finalize(self, job_id: uuid.UUID) -> FinalizeOut:
+        """Terminal status once every source has finished or the deadline passed; before that
+        the run stays `running` and the call can be repeated (or the sweep finishes it)."""
+        async with self._sessions() as db:
+            job = await job_lifecycle.finalize(db, job_id, self._now())
+            if job is None:
+                raise NotFoundError()
+            return FinalizeOut(
+                job_id=job.id,
+                status=job.status,
+                result_count=job.result_count,
+                error_code=job.error_code,
+            )
+
+    async def sweep(self, limit: int = 100) -> int:
+        """Finalizes runs past their deadline whose orchestrator never finished them
+        (n8n Cron, NFR-07). Reads also do this lazily; the sweep covers runs nobody reads."""
+        async with self._sessions() as db:
+            overdue = await SearchJobRepository(db).list_overdue_ids(self._now(), limit)
+        finalized = 0
+        for job_id in overdue:
+            async with self._sessions() as db:
+                job = await job_lifecycle.finalize(db, job_id, self._now())
+                finalized += bool(job is not None and is_terminal(job.status))
+        if finalized:
+            logger.info("search_jobs_swept", finalized=finalized)
+        return finalized
 
     async def start(self, job_id: uuid.UUID) -> bool:
         """pending → running. Returns whether the job is running (repeating is harmless)."""

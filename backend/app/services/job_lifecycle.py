@@ -91,6 +91,23 @@ async def cancel(db: AsyncSession, job_id: uuid.UUID, now: datetime) -> SearchJo
     return job
 
 
+async def fail(db: AsyncSession, job_id: uuid.UUID, error_code: str, now: datetime) -> None:
+    """Ends a run that could not be started (TD-09: `DISPATCH_ERROR`). Sources that never
+    ran are closed as skipped. A run that already moved on is left alone."""
+    repo = SearchJobRepository(db)
+    job = await repo.lock_for_runner(job_id)
+    if job is None or job.status is not SearchJobStatus.PENDING:
+        return
+    job.status = SearchJobStatus.FAILED
+    job.error_code = error_code
+    job.finished_at = now
+    sources = await repo.list_sources(job.id)
+    _close(sources, SearchJobSourceStatus.SKIPPED, SourceErrorCode.NOT_RUN, now)
+    await refresh_progress(repo, job)
+    await db.commit()
+    logger.warning("search_job_failed", job_id=str(job.id), error_code=error_code)
+
+
 def _close(
     sources: list[SearchJobSource],
     status: SearchJobSourceStatus,

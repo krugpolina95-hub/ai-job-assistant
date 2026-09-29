@@ -70,6 +70,12 @@ services:
       SMTP_USERNAME: ${SMTP_USERNAME:-}
       SMTP_PASSWORD: ${SMTP_PASSWORD:-}
       EMAIL_FROM: ${EMAIL_FROM:-}
+      # n8n orchestration (TD-06/TD-09). Stays inline until the workflows are imported (M6.3).
+      JOB_DISPATCHER: ${JOB_DISPATCHER:-inline}
+      N8N_WEBHOOK_URL: ${N8N_WEBHOOK_URL:-http://n8n:5678/webhook/wf-001-search}
+      N8N_WEBHOOK_SECRET: ${N8N_WEBHOOK_SECRET:-}
+      INTERNAL_API_TOKEN: ${INTERNAL_API_TOKEN:-}
+      INTERNAL_HMAC_SECRET: ${INTERNAL_HMAC_SECRET:-}
     depends_on:
       postgres:
         condition: service_healthy

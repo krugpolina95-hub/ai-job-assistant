@@ -32,6 +32,7 @@ class ErrorCode(StrEnum):
     RATE_LIMITED = "RATE_LIMITED"
     IDEMPOTENCY_KEY_REUSED = "IDEMPOTENCY_KEY_REUSED"
     JOB_ALREADY_FINISHED = "JOB_ALREADY_FINISHED"
+    JOB_NOT_RUNNING = "JOB_NOT_RUNNING"
     AI_UNAVAILABLE = "AI_UNAVAILABLE"
     AI_INVALID_RESPONSE = "AI_INVALID_RESPONSE"
     PAYLOAD_TOO_LARGE = "PAYLOAD_TOO_LARGE"
@@ -181,6 +182,15 @@ class JobAlreadyFinishedError(AppError):
     code = ErrorCode.JOB_ALREADY_FINISHED
     status_code = HTTPStatus.CONFLICT
     default_message = "The search run has already finished"
+
+
+class JobNotRunningError(AppError):
+    """Internal API: the run was cancelled or already finished, so the orchestrator should
+    stop working on it (architecture §8.3)."""
+
+    code = ErrorCode.JOB_NOT_RUNNING
+    status_code = HTTPStatus.GONE
+    default_message = "The search run is not running"
 
 
 class AIUnavailableError(AppError):

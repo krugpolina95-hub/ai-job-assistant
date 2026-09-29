@@ -71,6 +71,7 @@ Defined in `backend/app/core/errors.py`. New codes are added with the feature th
 | `JOB_LIMIT_REACHED` | 409 | The user already has the maximum number of active runs. |
 | `IDEMPOTENCY_KEY_REUSED` | 409 | An `Idempotency-Key` already used for a different search. |
 | `JOB_ALREADY_FINISHED` | 409 | Cancelling a run that already completed or failed. |
+| `JOB_NOT_RUNNING` | 410 | Internal API only: the run was cancelled or already finished, so n8n should stop working on it. |
 | `RATE_LIMITED` | 429 | A request limit was hit: too many search runs in the last hour, too many auth attempts (see [Auth](#auth)), or the AI quota (`ai_calls_per_day`: 50 per rolling 24 h, `ai_calls_per_minute`: 10). `details.limit` names the limit. Auth and per-minute AI limits also send `Retry-After` (seconds). |
 | `AI_UNAVAILABLE` | 503 | The AI assistant can't answer: no provider configured, provider down or rate-limited, timed out, or paused after repeated failures. The UI falls back to the search form (architecture §9). No AI endpoint exists yet (M7.5). |
 | `AI_INVALID_RESPONSE` | 502 | The AI answered twice without matching the expected structure (AI-007). The UI falls back to the form. |
@@ -223,3 +224,20 @@ Another user's search or run is `404` everywhere.
 | `unsupported` | The source never provides the data (e.g. Adzuna: work format, experience level, language, radius). Every result is flagged. |
 
 `filter_warnings[]` summarizes this per filter: `{filter, unsupported_by: [source keys], unverified_results}`, and every result in `/results` lists its `unverified_filters`. The UI must show these instead of presenting such results as matches. Salary filters compare monthly amounts in the same currency; other currencies stay unverified until FX rates (M5.11).
+
+## Internal API (n8n → backend)
+
+`/internal/v1` is how n8n drives search runs when `JOB_DISPATCHER=n8n` (TD-06, TD-09, architecture §8.3). It is not public: the Next.js rewrite forwards only `/api/v1`, the backend publishes no port, and these routes are left out of the OpenAPI document and the generated frontend types.
+
+**Authentication (every route).** `Authorization: Bearer <INTERNAL_API_TOKEN>`, `X-Timestamp: <Unix seconds>` and `X-Signature: sha256=<hex HMAC-SHA256(INTERNAL_HMAC_SECRET, canonical)>`, where `canonical` is four lines joined with `
+`: the timestamp, the method in capitals, the path with query, and the SHA-256 hex of the raw body. Timestamps more than `INTERNAL_SIGNATURE_MAX_AGE_SECONDS` (300) from the server clock are refused. Any failure is `401 UNAUTHENTICATED`; so is every request while the token or the secret is not configured.
+
+| Method | Path | Body | Success |
+|---|---|---|---|
+| GET | `/internal/v1/jobs/{id}/context` | none | `200 {job_id, status, deadline_at, sources: [keys]}`. No search parameters or profile: n8n needs no user data. |
+| POST | `/internal/v1/jobs/{id}/status` | `{"status": "running"}` | `200 {job_id, status: "running"}`, idempotent. `410 JOB_NOT_RUNNING` if the run is over. |
+| POST | `/internal/v1/jobs/{id}/sources/{key}/run` | none | `200 {job_id, source, status, attempts, fetched_count, stored_count, error_code}`: runs the source (adapter → ingest → link, with the backend's own retries of retryable source errors) and returns its recorded outcome. Repeating returns the same outcome without fetching again. `410` if the run is over, `404` for an unknown run or a source not in it. |
+| POST | `/internal/v1/jobs/{id}/finalize` | none | `200 {job_id, status, result_count, error_code}`: the terminal status once every source finished or the deadline passed, otherwise still `running`. Idempotent. |
+| POST | `/internal/v1/maintenance/sweep-jobs` | none | `200 {finalized: n}`: finishes active runs past their deadline (Cron, every minute). |
+
+**Trigger (backend → n8n).** On `POST /searches/{id}/run` the backend POSTs `{"job_id", "request_id"}` to `N8N_WEBHOOK_URL`, signed the same way with `N8N_WEBHOOK_SECRET` (path = the webhook URL path). One retry; if n8n still can't be reached or answers non-2xx (redirects are not followed), the run fails at once with `error_code: DISPATCH_ERROR` and its sources become `skipped` / `SOURCE_NOT_RUN`, which the `202` response already shows.
